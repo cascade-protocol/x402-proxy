@@ -1,0 +1,18 @@
+{
+  "name": "x402-proxy-monorepo",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.30.1+sha512.3590e550d5384caa39bd5c7c739f72270234b2f6059e13018f975c313b1eb9fefcc09714048765d4d9efe961382c312e624572c0420762bdc5d5940cdf9be73a",
+  "scripts": {
+    "check": "turbo run build type-check && biome check --write",
+    "lint": "biome check --write",
+    "build": "turbo run build",
+    "test": "vitest --project x402-proxy"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.2",
+    "turbo": "^2.8.13",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.18"
+  }
+}
