@@ -1,87 +1,109 @@
 # x402-proxy
 
-Generic [x402](https://www.x402.org/) payment proxy library for Solana and EVM USDC. Wraps `fetch` with automatic x402 payment handling, tracks transaction history, and provides wallet loading utilities.
+CLI and library for paying [x402](https://www.x402.org/) resources. Auto-pays HTTP 402 responses with USDC on Base or Solana.
 
-## Install
+## Quick Start
 
 ```bash
-npm install x402-proxy
+npx x402-proxy setup                # generate wallet from BIP-39 mnemonic
+npx x402-proxy wallet fund          # see where to send USDC
+npx x402-proxy https://example.com  # make a paid request
 ```
 
-Peer dependencies: `@solana/kit`, `ethers`, `viem`
+**Done.** Your wallet derives both EVM (Base) and Solana keypairs from a single mnemonic. Fund either chain and start paying for x402 resources.
 
-## Usage
+## Commands
+
+```bash
+x402-proxy <url>                    # paid HTTP request (default command)
+x402-proxy mcp <url>                # MCP stdio proxy for agents (alpha)
+x402-proxy setup                    # onboarding wizard
+x402-proxy status                   # config + wallet + spend summary
+x402-proxy wallet                   # show addresses
+x402-proxy wallet history           # payment history
+x402-proxy wallet fund              # funding instructions
+x402-proxy wallet export-key <chain> # bare key to stdout (evm|solana)
+```
+
+All commands support `--help` for details.
+
+## Fetch (HTTP Client)
+
+```bash
+# GET request
+x402-proxy https://twitter.surf.cascade.fyi/search?q=x402
+
+# POST with body and headers
+x402-proxy --method POST \
+  --header "Content-Type: application/json" \
+  --body '{"url":"https://x402.org"}' \
+  https://web.surf.cascade.fyi/v1/crawl
+```
+
+Response body streams to stdout, payment info goes to stderr. Pipe-safe:
+
+```bash
+x402-proxy https://api.example.com/data | jq '.results'
+```
+
+## MCP Proxy (Alpha)
+
+Wraps a remote MCP server with automatic x402 payment. Configure in your MCP client:
+
+```json
+{
+  "mcpServers": {
+    "paid-service": {
+      "command": "npx",
+      "args": ["x402-proxy", "mcp", "https://mcp.example.com/sse"],
+      "env": {
+        "X402_PROXY_WALLET_MNEMONIC": "your 24 words here"
+      }
+    }
+  }
+}
+```
+
+## Wallet
+
+A single BIP-39 mnemonic derives both chains:
+- **Solana:** SLIP-10 Ed25519 at `m/44'/501'/0'/0'`
+- **EVM:** BIP-32 secp256k1 at `m/44'/60'/0'/0/0`
+
+Config stored at `$XDG_CONFIG_HOME/x402-proxy/` (default `~/.config/x402-proxy/`).
+
+### Export keys for other tools
+
+```bash
+# Pipe-safe - outputs bare key to stdout
+MY_KEY=$(npx x402-proxy wallet export-key evm)
+```
+
+## Env Vars
+
+Override wallet per-instance (useful for MCP configs):
+
+```
+X402_PROXY_WALLET_MNEMONIC     # BIP-39 mnemonic (derives both chains)
+X402_PROXY_WALLET_EVM_KEY      # EVM private key (hex)
+X402_PROXY_WALLET_SOLANA_KEY   # Solana private key (base58)
+```
+
+Resolution order: flags > env vars > mnemonic env > `wallet.json` file.
+
+## Library Usage
 
 ```ts
 import {
-  x402Client,
-  ExactSvmScheme,
-  ExactEvmScheme,
   createX402ProxyHandler,
   extractTxSignature,
-  loadSvmWallet,
-  loadEvmWallet,
+  appendHistory,
+  readHistory,
+  calcSpend,
 } from "x402-proxy";
-
-// 1. Configure the x402 client with payment schemes
-const svmWallet = await loadSvmWallet("/path/to/keypair.json");
-const client = x402Client([ExactSvmScheme(svmWallet)]);
-
-// 2. Create the proxy handler
-const { x402Fetch, shiftPayment } = createX402ProxyHandler({ client });
-
-// 3. Make requests - payments are handled automatically
-const response = await x402Fetch("https://api.example.com/paid-endpoint");
-const payment = shiftPayment(); // { network, payTo, amount, asset }
-const txSig = extractTxSignature(response);
 ```
 
-### Transaction history
-
-```ts
-import { appendHistory, readHistory, calcSpend, formatTxLine } from "x402-proxy";
-
-// Append a transaction record
-appendHistory("/path/to/history.jsonl", {
-  t: Date.now(),
-  ok: true,
-  kind: "x402_inference",
-  net: "solana:mainnet",
-  from: "J5UH...",
-  tx: "5abc...",
-  amount: 0.05,
-  token: "USDC",
-  model: "claude-sonnet-4-20250514",
-});
-
-// Read and aggregate
-const records = readHistory("/path/to/history.jsonl");
-const { today, total, count } = calcSpend(records);
-```
-
-## API
-
-### Payment proxy
-
-- `createX402ProxyHandler(opts)` - wraps fetch with automatic x402 payment. Returns `{ x402Fetch, shiftPayment }`
-- `extractTxSignature(response)` - extracts on-chain TX signature from payment response headers
-
-### Wallet loading
-
-- `loadSvmWallet(path)` - load Solana keypair from solana-keygen JSON file
-- `loadEvmWallet(path)` - load EVM wallet from hex private key file
-
-### Transaction history
-
-- `appendHistory(path, record)` - append a `TxRecord` to a JSONL file (auto-truncates at 1000 lines)
-- `readHistory(path)` - read all records from a JSONL history file
-- `calcSpend(records)` - aggregate USDC spend (today/total/count)
-- `explorerUrl(net, tx)` - generate block explorer URL (Solscan, Basescan, Etherscan)
-- `formatTxLine(record)` - format a record as a markdown line with explorer link
-
-### Re-exports
-
-- `x402Client`, `ExactSvmScheme`, `ExactEvmScheme`, `toClientEvmSigner` - from `@x402/fetch`, `@x402/svm`, `@x402/evm`
+See the [library API docs](https://github.com/cascade-protocol/x402-proxy/tree/main/packages/x402-proxy#library-api) for details.
 
 ## License
 

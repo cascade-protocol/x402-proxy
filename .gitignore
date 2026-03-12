@@ -7,3 +7,4 @@ dist/
 !.env.example
 .pnpm-store
 *.tgz
+.claude/settings.local.json

@@ -1,13 +1,22 @@
 {
   "name": "x402-proxy",
-  "version": "0.1.2",
-  "description": "Generic x402 payment proxy library for Solana USDC",
+  "version": "0.2.0",
+  "description": "CLI and library for x402 paid HTTP requests and MCP proxy",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./dist/index.js",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
     "./package.json": "./package.json"
+  },
+  "bin": {
+    "x402-proxy": "./dist/bin/cli.js"
   },
   "scripts": {
     "build": "rm -rf dist && tsdown --publint",
@@ -17,9 +26,20 @@
     "prepublishOnly": "pnpm build"
   },
   "dependencies": {
+    "@clack/prompts": "^1.1.0",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@noble/curves": "^2.0.1",
+    "@noble/hashes": "^2.0.1",
+    "@scure/base": "^2.0.0",
+    "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1",
+    "@stricli/core": "^1.2.6",
     "@x402/evm": "^2.6.0",
     "@x402/fetch": "^2.6.0",
-    "@x402/svm": "^2.6.0"
+    "@x402/mcp": "^2.6.0",
+    "@x402/svm": "^2.6.0",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.8.2"
   },
   "peerDependencies": {
     "@solana/kit": "^6.0.0",
@@ -38,6 +58,18 @@
     "dist/**",
     "README.md",
     "LICENSE"
+  ],
+  "keywords": [
+    "x402",
+    "payment",
+    "proxy",
+    "mcp",
+    "solana",
+    "evm",
+    "base",
+    "usdc",
+    "ai-agent",
+    "micropayment"
   ],
   "license": "Apache-2.0",
   "engines": {

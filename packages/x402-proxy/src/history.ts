@@ -117,8 +117,6 @@ export function explorerUrl(net: string, tx: string): string {
   if (net.startsWith("eip155:")) {
     const chainId = net.split(":")[1];
     if (chainId === "8453") return `https://basescan.org/tx/${tx}`;
-    if (chainId === "84532") return `https://sepolia.basescan.org/tx/${tx}`;
-    if (chainId === "1") return `https://etherscan.io/tx/${tx}`;
     return `https://basescan.org/tx/${tx}`;
   }
   return `https://solscan.io/tx/${tx}`;
