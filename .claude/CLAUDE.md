@@ -67,7 +67,7 @@ pnpm build    # clean + tsdown --publint (via Turbo)
    git tag v<version>
    git push && git push origin v<version>
    ```
-5. **ASK THE USER to run `npm publish`** from `packages/x402-proxy/` (requires OTP authentication the agent cannot provide)
+5. Publish from `packages/x402-proxy/`: `pnpm publish` (no `--no-git-checks`, working tree must be clean)
 6. After publish, verify with `npm view x402-proxy@<version> bin`
 7. Create GitHub release:
    ```bash
