@@ -1,11 +1,12 @@
 import { base58 } from "@scure/base";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
-import { x402Client } from "@x402/fetch";
+import { type PaymentRequirements, x402Client } from "@x402/fetch";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { loadWalletFile } from "./config.js";
+import { calcSpend, readHistory } from "../history.js";
+import { getHistoryPath, loadWalletFile } from "./config.js";
 import { deriveEvmKeypair, deriveSolanaKeypair } from "./derive.js";
 
 export type WalletSource = "flag" | "env" | "mnemonic-env" | "wallet-file" | "none";
@@ -100,11 +101,41 @@ function parsesolanaKey(input: string): Uint8Array {
   return base58.decode(trimmed);
 }
 
+function networkToCaipPrefix(name: string): string {
+  switch (name.toLowerCase()) {
+    case "base":
+      return "eip155:8453";
+    case "solana":
+      return "solana:";
+    default:
+      return name;
+  }
+}
+
+export type BuildClientOptions = {
+  preferredNetwork?: string;
+  spendLimitDaily?: number;
+  spendLimitPerTx?: number;
+};
+
 /**
  * Build a configured x402Client from resolved wallet keys.
  */
-export async function buildX402Client(wallet: WalletResolution): Promise<x402Client> {
-  const client = new x402Client();
+export async function buildX402Client(
+  wallet: WalletResolution,
+  opts?: BuildClientOptions,
+): Promise<x402Client> {
+  // Network preference: sort accepts to prefer configured network
+  const selector = opts?.preferredNetwork
+    ? (() => {
+        const prefix = networkToCaipPrefix(opts.preferredNetwork as string);
+        return (_version: number, accepts: PaymentRequirements[]) => {
+          return accepts.find((r) => r.network.startsWith(prefix)) || accepts[0];
+        };
+      })()
+    : undefined;
+
+  const client = new x402Client(selector);
 
   if (wallet.evmKey) {
     const hex = wallet.evmKey as `0x${string}`;
@@ -119,6 +150,35 @@ export async function buildX402Client(wallet: WalletResolution): Promise<x402Cli
     const signer = await createKeyPairSignerFromBytes(wallet.solanaKey);
     client.register("solana:mainnet", new ExactSvmScheme(signer));
     client.register("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", new ExactSvmScheme(signer));
+  }
+
+  // Spend limit policies
+  const daily = opts?.spendLimitDaily;
+  const perTx = opts?.spendLimitPerTx;
+  if (daily || perTx) {
+    client.registerPolicy((_version, reqs) => {
+      if (daily) {
+        const spend = calcSpend(readHistory(getHistoryPath()));
+        if (spend.today >= daily) {
+          throw new Error(`Daily spend limit reached (${spend.today.toFixed(4)}/${daily} USDC)`);
+        }
+        const remaining = daily - spend.today;
+        reqs = reqs.filter((r) => Number(r.amount) / 1_000_000 <= remaining);
+        if (reqs.length === 0) {
+          throw new Error(
+            `Daily spend limit of ${daily} USDC would be exceeded (${spend.today.toFixed(4)} spent today)`,
+          );
+        }
+      }
+      if (perTx) {
+        const before = reqs.length;
+        reqs = reqs.filter((r) => Number(r.amount) / 1_000_000 <= perTx);
+        if (reqs.length === 0 && before > 0) {
+          throw new Error(`Payment exceeds per-transaction limit of ${perTx} USDC`);
+        }
+      }
+      return reqs;
+    });
   }
 
   return client;

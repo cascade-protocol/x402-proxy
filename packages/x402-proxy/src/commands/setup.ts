@@ -2,7 +2,7 @@ import * as prompts from "@clack/prompts";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
 import {
-  getConfigDir,
+  getConfigDirShort,
   getWalletPath,
   isConfigured,
   saveConfig,
@@ -76,7 +76,7 @@ export const setupCommand = buildCommand<{ force: boolean }, [], CommandContext>
     const evm = deriveEvmKeypair(mnemonic);
     const sol = deriveSolanaKeypair(mnemonic);
 
-    prompts.log.success(`EVM address:    ${pc.green(evm.address)}`);
+    prompts.log.success(`Base address:   ${pc.green(evm.address)}`);
     prompts.log.success(`Solana address: ${pc.green(sol.address)}`);
 
     const wallet: WalletFile = {
@@ -88,11 +88,16 @@ export const setupCommand = buildCommand<{ force: boolean }, [], CommandContext>
     saveWalletFile(wallet);
     saveConfig({});
 
-    prompts.log.info(`Config directory: ${pc.dim(getConfigDir())}`);
+    prompts.log.info(`Config directory: ${pc.dim(getConfigDirShort())}`);
 
     prompts.log.step("Fund your wallets to start using x402 resources:");
     prompts.log.message(`  Solana (USDC): Send USDC to ${pc.cyan(sol.address)}`);
-    prompts.log.message(`  EVM (USDC):    Send USDC to ${pc.cyan(evm.address)} on Base`);
+    prompts.log.message(`  Base (USDC):   Send USDC to ${pc.cyan(evm.address)}`);
+
+    prompts.log.step("Try your first request:");
+    prompts.log.message(
+      `  ${pc.cyan("$ npx x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi")}`,
+    );
 
     prompts.outro(pc.green("Setup complete!"));
   },

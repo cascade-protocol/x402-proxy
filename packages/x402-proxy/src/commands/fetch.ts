@@ -2,7 +2,7 @@ import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
 import { createX402ProxyHandler, extractTxSignature } from "../handler.js";
 import { appendHistory, type TxRecord } from "../history.js";
-import { ensureConfigDir, getHistoryPath, isConfigured } from "../lib/config.js";
+import { ensureConfigDir, getHistoryPath, isConfigured, loadConfig } from "../lib/config.js";
 import { dim, error, info, isTTY } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 
@@ -18,6 +18,12 @@ type FetchFlags = {
 export const fetchCommand = buildCommand<FetchFlags, [url?: string], CommandContext>({
   docs: {
     brief: "Make a paid HTTP request (default command)",
+    fullDescription: `Make a paid HTTP request. Payment is automatic when the server returns 402.
+
+Examples:
+  $ x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi
+  $ x402-proxy -X POST -d '{"url":"https://x402.org"}' https://web.surf.cascade.fyi/v1/crawl
+  $ x402-proxy https://api.example.com/data | jq '.results'`,
   },
   parameters: {
     flags: {
@@ -74,17 +80,45 @@ export const fetchCommand = buildCommand<FetchFlags, [url?: string], CommandCont
     if (!url) {
       if (isConfigured()) {
         const { displayStatus } = await import("./status.js");
-        displayStatus();
+        await displayStatus();
+
+        console.log();
+        console.log(pc.dim("  Commands:"));
+        console.log(`    ${pc.cyan("$ npx x402-proxy <url>")}              Fetch a paid API`);
+        console.log(
+          `    ${pc.cyan("$ npx x402-proxy mcp <url>")}          MCP proxy for AI agents`,
+        );
+        console.log(`    ${pc.cyan("$ npx x402-proxy setup")}              Reconfigure wallet`);
+        console.log(`    ${pc.cyan("$ npx x402-proxy wallet")}             Addresses and balances`);
+        console.log(`    ${pc.cyan("$ npx x402-proxy wallet history")}     Full payment history`);
+        console.log(`    ${pc.cyan("$ npx x402-proxy wallet fund")}        Funding instructions`);
+        console.log();
+        console.log(
+          pc.dim("  try: ") +
+            pc.cyan("$ npx x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi"),
+        );
+        console.log();
+        console.log(pc.dim("  https://github.com/cascade-protocol/x402-proxy"));
+        console.log();
       } else {
         console.log();
-        console.log(pc.cyan("x402-proxy") + pc.dim(" - pay for any x402 resource"));
+        console.log(pc.cyan(pc.bold("x402-proxy")));
+        console.log(pc.dim("curl for x402 paid APIs"));
         console.log();
-        console.log(pc.dim("  Get started:"));
-        console.log(`    ${pc.cyan("x402-proxy setup")}          Create a wallet`);
-        console.log(`    ${pc.cyan("x402-proxy <url>")}          Make a paid request`);
-        console.log(`    ${pc.cyan("x402-proxy mcp <url>")}      MCP proxy for agents`);
-        console.log(`    ${pc.cyan("x402-proxy wallet")}         Wallet info`);
-        console.log(`    ${pc.cyan("x402-proxy --help")}         All commands`);
+        console.log(pc.dim("  Commands:"));
+        console.log(`    ${pc.cyan("$ npx x402-proxy setup")}              Create a wallet`);
+        console.log(`    ${pc.cyan("$ npx x402-proxy <url>")}              Fetch a paid API`);
+        console.log(
+          `    ${pc.cyan("$ npx x402-proxy mcp <url>")}          MCP proxy for AI agents`,
+        );
+        console.log(`    ${pc.cyan("$ npx x402-proxy wallet")}             Addresses and balances`);
+        console.log(`    ${pc.cyan("$ npx x402-proxy wallet history")}     Payment history`);
+        console.log(`    ${pc.cyan("$ npx x402-proxy wallet fund")}        Funding instructions`);
+        console.log(`    ${pc.cyan("$ npx x402-proxy --help")}             All options`);
+        console.log();
+        console.log(pc.dim("  try: ") + pc.cyan("$ npx x402-proxy setup"));
+        console.log();
+        console.log(pc.dim("  https://github.com/cascade-protocol/x402-proxy"));
         console.log();
       }
       return;
@@ -110,7 +144,12 @@ export const fetchCommand = buildCommand<FetchFlags, [url?: string], CommandCont
       process.exit(1);
     }
 
-    const client = await buildX402Client(wallet);
+    const config = loadConfig();
+    const client = await buildX402Client(wallet, {
+      preferredNetwork: config?.defaultNetwork,
+      spendLimitDaily: config?.spendLimitDaily,
+      spendLimitPerTx: config?.spendLimitPerTx,
+    });
     const { x402Fetch, shiftPayment } = createX402ProxyHandler({ client });
 
     // Build request

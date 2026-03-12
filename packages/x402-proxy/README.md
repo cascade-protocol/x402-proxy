@@ -5,7 +5,7 @@
 ## Quick Start
 
 ```bash
-npx x402-proxy https://twitter.surf.cascade.fyi/search?q=cascade_fyi
+npx x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi
 ```
 
 That's it. The endpoint returns 402, x402-proxy pays and streams the response.
@@ -45,7 +45,7 @@ Works like curl. Response body streams to stdout, payment info goes to stderr.
 
 ```bash
 # GET request
-x402-proxy https://twitter.surf.cascade.fyi/search?q=x402
+x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi
 
 # POST with body and headers
 x402-proxy --method POST \

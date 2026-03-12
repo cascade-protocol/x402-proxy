@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-12
+
+### Added
+- Live wallet balances in `status` and `wallet` commands (USDC + ETH/SOL via RPC)
+- Recent transactions shown in `status` (last 5) and `wallet` (last 10)
+- Network preference (`defaultNetwork` config) - prefers configured chain when endpoint accepts multiple
+- Spend limits (`spendLimitDaily`, `spendLimitPerTx` config) enforced via x402Client policy
+- `--verbose` flag on `wallet` command to show transaction IDs
+- Confirmation prompt on `wallet export-key` when stdout is a terminal
+- Help text with usage examples for `fetch --help` and `mcp --help`
+- Full command reference, "try:" suggestion, and repo link in no-args output
+- Network indicator on transaction lines (base/sol)
+- Setup outro with "try your first request" using real endpoint
+
+### Changed
+- "EVM" label replaced with "Base" throughout (wallet, status, setup)
+- Config directory displayed as `~/.config/...` instead of absolute path
+- Error messages prefixed with `✗`, success with `✓` for accessibility
+- No-args output redesigned: identity header, wallet summary, commands, try suggestion
+- Example URLs use path-based format (`/user/cascade_fyi`) to avoid zsh glob issues
+- `@solana/kit`, `ethers`, `viem` moved from peerDependencies to dependencies (fixes npx ERESOLVE warnings)
+- Wallet subcommand hints shown at bottom of `wallet` output
+
+### Fixed
+- RPC balance failures show "(network error)" instead of silent omission
+
 ## [0.2.1] - 2026-03-12
 
 ### Changed
@@ -49,7 +75,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cascade-protocol/x402-proxy/releases/tag/v0.1.0

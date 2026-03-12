@@ -13,7 +13,7 @@ export function warn(msg: string): void {
 }
 
 export function error(msg: string): void {
-  process.stderr.write(`${isTTY() ? pc.red(msg) : msg}\n`);
+  process.stderr.write(`${isTTY() ? pc.red(`✗ ${msg}`) : `✗ ${msg}`}\n`);
 }
 
 export function dim(msg: string): void {
@@ -21,5 +21,5 @@ export function dim(msg: string): void {
 }
 
 export function success(msg: string): void {
-  process.stderr.write(`${isTTY() ? pc.green(msg) : msg}\n`);
+  process.stderr.write(`${isTTY() ? pc.green(`✓ ${msg}`) : `✓ ${msg}`}\n`);
 }

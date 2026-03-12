@@ -1,3 +1,4 @@
+import * as prompts from "@clack/prompts";
 import { base58 } from "@scure/base";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import { error, warn } from "../lib/output.js";
@@ -28,7 +29,7 @@ export const walletExportCommand = buildCommand<
     },
   },
   // biome-ignore lint/correctness/noUnusedFunctionParameters: required by Stricli callback signature
-  func(flags, chain) {
+  async func(flags, chain) {
     const wallet = resolveWallet();
 
     if (wallet.source === "none") {
@@ -36,21 +37,31 @@ export const walletExportCommand = buildCommand<
       process.exit(1);
     }
 
-    if (chain === "evm") {
-      if (!wallet.evmKey) {
-        error("No EVM key available.");
-        process.exit(1);
+    if (chain === "evm" && !wallet.evmKey) {
+      error("No EVM key available.");
+      process.exit(1);
+    }
+    if (chain === "solana" && !wallet.solanaKey) {
+      error("No Solana key available.");
+      process.exit(1);
+    }
+
+    // Interactive confirmation when key will be visible on screen
+    if (process.stdout.isTTY) {
+      const confirmed = await prompts.confirm({
+        message: "This will print your private key to the terminal. Continue?",
+      });
+      if (prompts.isCancel(confirmed) || !confirmed) {
+        process.exit(0);
       }
-      warn("Warning: private key will be printed to stdout.");
-      process.stdout.write(wallet.evmKey);
     } else {
-      if (!wallet.solanaKey) {
-        error("No Solana key available.");
-        process.exit(1);
-      }
       warn("Warning: private key will be printed to stdout.");
-      // Export as base58-encoded secret key (first 32 bytes)
-      process.stdout.write(base58.encode(wallet.solanaKey.slice(0, 32)));
+    }
+
+    if (chain === "evm") {
+      process.stdout.write(wallet.evmKey as string);
+    } else {
+      process.stdout.write(base58.encode((wallet.solanaKey as Uint8Array).slice(0, 32)));
     }
   },
 });

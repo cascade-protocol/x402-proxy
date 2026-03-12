@@ -1,49 +1,81 @@
 import { buildCommand } from "@stricli/core";
 import pc from "picocolors";
-import { calcSpend, readHistory } from "../history.js";
-import { getConfigDir, getHistoryPath, loadConfig } from "../lib/config.js";
-import { dim, info } from "../lib/output.js";
+import { calcSpend, formatTxLine, readHistory } from "../history.js";
+import { getConfigDirShort, getHistoryPath, loadConfig } from "../lib/config.js";
+import { dim } from "../lib/output.js";
 import { resolveWallet } from "../lib/resolve-wallet.js";
+import { balanceLine, fetchEvmBalances, fetchSolanaBalances } from "./wallet.js";
 
-export function displayStatus() {
+export async function displayStatus() {
   const wallet = resolveWallet();
   const config = loadConfig();
+  const records = readHistory(getHistoryPath());
+  const spend = calcSpend(records);
 
   console.log();
-  info("x402-proxy status");
-  console.log();
-
-  // Config
-  dim(`  Config directory: ${getConfigDir()}`);
-  if (config) {
-    if (config.spendLimit) dim(`  Spend limit:      ${config.spendLimit} USDC`);
-    if (config.defaultNetwork) dim(`  Default network:  ${config.defaultNetwork}`);
-  }
+  console.log(pc.cyan(pc.bold("x402-proxy")));
+  console.log(pc.dim("curl for x402 paid APIs"));
   console.log();
 
   // Wallet
   if (wallet.source === "none") {
     console.log(pc.yellow("  No wallet configured."));
-    console.log(pc.dim(`  Run ${pc.cyan("x402-proxy setup")} to create one.`));
+    console.log(pc.dim(`  Run ${pc.cyan("$ npx x402-proxy setup")} to create one.`));
   } else {
-    dim(`  Wallet source: ${wallet.source}`);
-    if (wallet.evmAddress) console.log(`  EVM:    ${pc.green(wallet.evmAddress)}`);
-    if (wallet.solanaAddress) console.log(`  Solana: ${pc.green(wallet.solanaAddress)}`);
+    const [evmResult, solResult] = await Promise.allSettled([
+      wallet.evmAddress ? fetchEvmBalances(wallet.evmAddress) : Promise.resolve(null),
+      wallet.solanaAddress ? fetchSolanaBalances(wallet.solanaAddress) : Promise.resolve(null),
+    ]);
+
+    const evm = evmResult.status === "fulfilled" ? evmResult.value : null;
+    const sol = solResult.status === "fulfilled" ? solResult.value : null;
+
+    if (wallet.evmAddress) {
+      const bal = evm ? balanceLine(evm.usdc, evm.eth, "ETH") : pc.dim(" (network error)");
+      console.log(`  Base:   ${pc.green(wallet.evmAddress)}${bal}`);
+    }
+    if (wallet.solanaAddress) {
+      const bal = sol ? balanceLine(sol.usdc, sol.sol, "SOL") : pc.dim(" (network error)");
+      console.log(`  Solana: ${pc.green(wallet.solanaAddress)}${bal}`);
+    }
+
+    // Spend limits
+    if (config?.spendLimitDaily || config?.spendLimitPerTx) {
+      console.log();
+      if (config.spendLimitDaily) {
+        const pct =
+          config.spendLimitDaily > 0 ? Math.round((spend.today / config.spendLimitDaily) * 100) : 0;
+        dim(
+          `  Daily limit:    ${spend.today.toFixed(4)} / ${config.spendLimitDaily} USDC (${pct}%)`,
+        );
+      }
+      if (config.spendLimitPerTx) {
+        dim(`  Per-tx limit:   ${config.spendLimitPerTx} USDC`);
+      }
+    }
   }
   console.log();
 
-  // Spend
-  const historyPath = getHistoryPath();
-  const records = readHistory(historyPath);
-  const spend = calcSpend(records);
+  // Recent transactions
   if (spend.count > 0) {
-    dim(`  Transactions: ${spend.count}`);
-    dim(`  Today:        ${spend.today.toFixed(4)} USDC`);
-    dim(`  Total:        ${spend.total.toFixed(4)} USDC`);
+    const recent = records.slice(-5);
+    dim("  Recent transactions:");
+    for (const r of recent) {
+      const line = formatTxLine(r).replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+      console.log(line);
+    }
+    console.log();
+    dim(
+      `  Today: ${spend.today.toFixed(4)} USDC | Total: ${spend.total.toFixed(4)} USDC | ${spend.count} tx`,
+    );
   } else {
     dim("  No payment history yet.");
   }
   console.log();
+
+  // Footer
+  if (config?.defaultNetwork) dim(`  Network: ${config.defaultNetwork}`);
+  dim(`  Config:  ${getConfigDirShort()}`);
 }
 
 export const statusCommand = buildCommand({
@@ -54,7 +86,8 @@ export const statusCommand = buildCommand({
     flags: {},
     positional: { kind: "tuple", parameters: [] },
   },
-  func() {
-    displayStatus();
+  async func() {
+    await displayStatus();
+    console.log();
   },
 });

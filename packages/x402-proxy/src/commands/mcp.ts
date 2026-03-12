@@ -1,6 +1,6 @@
 import { buildCommand, type CommandContext } from "@stricli/core";
 import { appendHistory, type TxRecord } from "../history.js";
-import { ensureConfigDir, getHistoryPath } from "../lib/config.js";
+import { ensureConfigDir, getHistoryPath, loadConfig } from "../lib/config.js";
 import { dim, error, warn } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 
@@ -12,6 +12,12 @@ type McpFlags = {
 export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandContext>({
   docs: {
     brief: "Start MCP stdio proxy with x402 payment (alpha)",
+    fullDescription: `Start an MCP stdio proxy with automatic x402 payment for AI agents.
+
+Add to your MCP client config (Claude, Cursor, etc.):
+  "command": "npx",
+  "args": ["x402-proxy", "mcp", "https://mcp.example.com/sse"],
+  "env": { "X402_PROXY_WALLET_MNEMONIC": "your 24 words" }`,
   },
   parameters: {
     flags: {
@@ -55,7 +61,12 @@ export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandCon
     if (wallet.evmAddress) dim(`  EVM:    ${wallet.evmAddress}`);
     if (wallet.solanaAddress) dim(`  Solana: ${wallet.solanaAddress}`);
 
-    const x402PaymentClient = await buildX402Client(wallet);
+    const config = loadConfig();
+    const x402PaymentClient = await buildX402Client(wallet, {
+      preferredNetwork: config?.defaultNetwork,
+      spendLimitDaily: config?.spendLimitDaily,
+      spendLimitPerTx: config?.spendLimitPerTx,
+    });
 
     // Dynamic imports to keep startup fast for non-MCP commands
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
@@ -68,7 +79,7 @@ export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandCon
     const { x402MCPClient } = await import("@x402/mcp");
 
     // Connect to remote MCP server
-    const remoteClient = new Client({ name: "x402-proxy", version: "0.2.0" });
+    const remoteClient = new Client({ name: "x402-proxy", version: "0.3.0" });
     const x402Mcp = new x402MCPClient(remoteClient, x402PaymentClient, {
       autoPayment: true,
       onPaymentRequested: (ctx) => {
@@ -130,7 +141,7 @@ export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandCon
     // Create local MCP server (stdio)
     const localServer = new McpServer({
       name: "x402-proxy",
-      version: "0.2.0",
+      version: "0.3.0",
     });
 
     // Register each remote tool as a local tool that proxies through x402

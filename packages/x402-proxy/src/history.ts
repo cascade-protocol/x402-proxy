@@ -131,7 +131,14 @@ function shortModel(model: string): string {
   return name.replace(/-\d{6,8}$/, "").replace(/-\d{4}$/, "");
 }
 
-export function formatTxLine(r: TxRecord): string {
+function shortNetwork(net: string): string {
+  if (net === "eip155:8453") return "base";
+  if (net.startsWith("eip155:")) return `evm:${net.split(":")[1]}`;
+  if (net.startsWith("solana:")) return "sol";
+  return net;
+}
+
+export function formatTxLine(r: TxRecord, opts?: { verbose?: boolean }): string {
   const time = new Date(r.t).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
@@ -147,6 +154,11 @@ export function formatTxLine(r: TxRecord): string {
     parts.push(formatAmount(r.amount, r.token));
   } else if (r.ok && r.kind === "sell" && r.meta?.pct != null) {
     parts.push(`${r.meta.pct}%`);
+  }
+  parts.push(shortNetwork(r.net));
+  if (opts?.verbose && r.tx) {
+    const short = r.tx.length > 20 ? `${r.tx.slice(0, 10)}...${r.tx.slice(-6)}` : r.tx;
+    parts.push(short);
   }
   const prefix = r.ok ? "" : "✗ ";
   return `  ${timeStr} ${prefix}${parts.join(" · ")}`;

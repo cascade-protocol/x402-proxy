@@ -4,8 +4,9 @@ import path from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 export type ProxyConfig = {
-  spendLimit?: number;
   defaultNetwork?: string;
+  spendLimitDaily?: number;
+  spendLimitPerTx?: number;
 };
 
 export type WalletFile = {
@@ -22,6 +23,13 @@ const APP_NAME = "x402-proxy";
 export function getConfigDir(): string {
   const xdg = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config");
   return path.join(xdg, APP_NAME);
+}
+
+/** Config dir with $HOME replaced by ~ for display */
+export function getConfigDirShort(): string {
+  const dir = getConfigDir();
+  const home = os.homedir();
+  return dir.startsWith(home) ? `~${dir.slice(home.length)}` : dir;
 }
 
 export function getWalletPath(): string {
