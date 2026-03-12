@@ -38,7 +38,7 @@ const routes = buildRouteMap({
 export const app = buildApplication(routes, {
   name: "x402-proxy",
   versionInfo: {
-    currentVersion: "0.3.0",
+    currentVersion: "0.3.1",
   },
   scanner: {
     caseStyle: "allow-kebab-for-camel",

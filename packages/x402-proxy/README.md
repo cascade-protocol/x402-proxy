@@ -67,7 +67,7 @@ x402-proxy status                   # config + wallet + spend summary
 x402-proxy wallet                   # show addresses
 x402-proxy wallet history           # payment history
 x402-proxy wallet fund              # funding instructions
-x402-proxy wallet export-key <chain> # bare key to stdout (evm|solana)
+x402-proxy wallet export-key <target> # bare key/mnemonic to stdout (evm|solana|mnemonic)
 ```
 
 All commands support `--help` for details.
@@ -83,8 +83,9 @@ Config stored at `$XDG_CONFIG_HOME/x402-proxy/` (default `~/.config/x402-proxy/`
 ### Export keys for other tools
 
 ```bash
-# Pipe-safe - outputs bare key to stdout
+# Pipe-safe - outputs bare key/mnemonic to stdout
 MY_KEY=$(npx x402-proxy wallet export-key evm)
+MY_MNEMONIC=$(npx x402-proxy wallet export-key mnemonic)
 ```
 
 ## Env Vars
