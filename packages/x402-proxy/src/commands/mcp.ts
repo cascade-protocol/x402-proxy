@@ -1,10 +1,15 @@
-import { buildCommand } from "@stricli/core";
-import { resolveWallet, buildX402Client } from "../lib/resolve-wallet.js";
-import { error, warn, dim } from "../lib/output.js";
-import { getHistoryPath, ensureConfigDir } from "../lib/config.js";
+import { buildCommand, type CommandContext } from "@stricli/core";
 import { appendHistory, type TxRecord } from "../history.js";
+import { ensureConfigDir, getHistoryPath } from "../lib/config.js";
+import { dim, error, warn } from "../lib/output.js";
+import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 
-export const mcpCommand = buildCommand({
+type McpFlags = {
+  evmKey: string | undefined;
+  solanaKey: string | undefined;
+};
+
+export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandContext>({
   docs: {
     brief: "Start MCP stdio proxy with x402 payment (alpha)",
   },
@@ -54,16 +59,12 @@ export const mcpCommand = buildCommand({
 
     // Dynamic imports to keep startup fast for non-MCP commands
     const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
-    const { SSEClientTransport } = await import(
-      "@modelcontextprotocol/sdk/client/sse.js"
-    );
+    const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
     const { StreamableHTTPClientTransport } = await import(
       "@modelcontextprotocol/sdk/client/streamableHttp.js"
     );
     const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
-    const { StdioServerTransport } = await import(
-      "@modelcontextprotocol/sdk/server/stdio.js"
-    );
+    const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
     const { x402MCPClient } = await import("@x402/mcp");
 
     // Connect to remote MCP server
@@ -73,9 +74,7 @@ export const mcpCommand = buildCommand({
       onPaymentRequested: (ctx) => {
         const accept = ctx.paymentRequired.accepts?.[0];
         if (accept) {
-          warn(
-            `  Payment: ${accept.maxAmountRequired ?? accept.amount ?? "?"} on ${accept.network} for tool "${ctx.toolName}"`,
-          );
+          warn(`  Payment: ${accept.amount} on ${accept.network} for tool "${ctx.toolName}"`);
         }
         return true;
       },
@@ -117,7 +116,9 @@ export const mcpCommand = buildCommand({
         connected = true;
         dim("  Connected via SSE");
       } catch (err) {
-        error(`Failed to connect to ${remoteUrl}: ${err instanceof Error ? err.message : String(err)}`);
+        error(
+          `Failed to connect to ${remoteUrl}: ${err instanceof Error ? err.message : String(err)}`,
+        );
         process.exit(1);
       }
     }

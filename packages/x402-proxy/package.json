@@ -1,7 +1,7 @@
 {
   "name": "x402-proxy",
-  "version": "0.2.0",
-  "description": "CLI and library for x402 paid HTTP requests and MCP proxy",
+  "version": "0.2.1",
+  "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base and Solana.",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -61,15 +61,16 @@
   ],
   "keywords": [
     "x402",
-    "payment",
-    "proxy",
+    "http-402",
     "mcp",
-    "solana",
-    "evm",
-    "base",
-    "usdc",
+    "mcp-proxy",
     "ai-agent",
-    "micropayment"
+    "agentic-commerce",
+    "base",
+    "solana",
+    "usdc",
+    "coinbase",
+    "cli"
   ],
   "license": "Apache-2.0",
   "engines": {

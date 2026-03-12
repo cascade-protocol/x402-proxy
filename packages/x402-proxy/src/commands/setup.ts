@@ -1,5 +1,5 @@
-import { buildCommand } from "@stricli/core";
 import * as prompts from "@clack/prompts";
+import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
 import {
   getConfigDir,
@@ -11,7 +11,7 @@ import {
 } from "../lib/config.js";
 import { deriveEvmKeypair, deriveSolanaKeypair, generateMnemonic } from "../lib/derive.js";
 
-export const setupCommand = buildCommand({
+export const setupCommand = buildCommand<{ force: boolean }, [], CommandContext>({
   docs: {
     brief: "Set up x402-proxy with a new wallet",
   },
@@ -61,10 +61,9 @@ export const setupCommand = buildCommand({
     } else {
       const input = await prompts.text({
         message: "Enter your 24-word mnemonic:",
-        validate: (v) => {
+        validate: (v = "") => {
           const words = v.trim().split(/\s+/);
-          if (words.length !== 12 && words.length !== 24)
-            return "Mnemonic must be 12 or 24 words";
+          if (words.length !== 12 && words.length !== 24) return "Mnemonic must be 12 or 24 words";
         },
       });
       if (prompts.isCancel(input)) {

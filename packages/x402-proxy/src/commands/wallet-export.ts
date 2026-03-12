@@ -1,9 +1,13 @@
-import { buildCommand } from "@stricli/core";
 import { base58 } from "@scure/base";
-import { resolveWallet } from "../lib/resolve-wallet.js";
+import { buildCommand, type CommandContext } from "@stricli/core";
 import { error, warn } from "../lib/output.js";
+import { resolveWallet } from "../lib/resolve-wallet.js";
 
-export const walletExportCommand = buildCommand({
+export const walletExportCommand = buildCommand<
+  Record<string, never>,
+  [chain: "evm" | "solana"],
+  CommandContext
+>({
   docs: {
     brief: "Export private key to stdout (pipe-safe)",
   },
@@ -23,7 +27,8 @@ export const walletExportCommand = buildCommand({
       ],
     },
   },
-  func(_flags, chain: "evm" | "solana") {
+  // biome-ignore lint/correctness/noUnusedFunctionParameters: required by Stricli callback signature
+  func(flags, chain) {
     const wallet = resolveWallet();
 
     if (wallet.source === "none") {

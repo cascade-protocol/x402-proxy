@@ -1,54 +1,27 @@
 # x402-proxy
 
-CLI and library for paying [x402](https://www.x402.org/) resources. Auto-pays HTTP 402 responses with USDC on Base or Solana.
+`curl` for [x402](https://www.x402.org/) paid APIs. Auto-pays HTTP 402 responses with USDC on Base and Solana - zero crypto code on the buyer side.
 
 ## Quick Start
 
 ```bash
-npx x402-proxy setup                # generate wallet from BIP-39 mnemonic
-npx x402-proxy wallet fund          # see where to send USDC
-npx x402-proxy https://example.com  # make a paid request
+npx x402-proxy https://twitter.surf.cascade.fyi/search?q=cascade_fyi
 ```
 
-**Done.** Your wallet derives both EVM (Base) and Solana keypairs from a single mnemonic. Fund either chain and start paying for x402 resources.
+That's it. The endpoint returns 402, x402-proxy pays and streams the response.
 
-## Commands
+First time? Set up a wallet:
 
 ```bash
-x402-proxy <url>                    # paid HTTP request (default command)
-x402-proxy mcp <url>                # MCP stdio proxy for agents (alpha)
-x402-proxy setup                    # onboarding wizard
-x402-proxy status                   # config + wallet + spend summary
-x402-proxy wallet                   # show addresses
-x402-proxy wallet history           # payment history
-x402-proxy wallet fund              # funding instructions
-x402-proxy wallet export-key <chain> # bare key to stdout (evm|solana)
+npx x402-proxy setup          # generate wallet from BIP-39 mnemonic
+npx x402-proxy wallet fund    # see where to send USDC
 ```
 
-All commands support `--help` for details.
+One mnemonic derives both EVM (Base) and Solana keypairs. Fund either chain and go.
 
-## Fetch (HTTP Client)
+## MCP Proxy
 
-```bash
-# GET request
-x402-proxy https://twitter.surf.cascade.fyi/search?q=x402
-
-# POST with body and headers
-x402-proxy --method POST \
-  --header "Content-Type: application/json" \
-  --body '{"url":"https://x402.org"}' \
-  https://web.surf.cascade.fyi/v1/crawl
-```
-
-Response body streams to stdout, payment info goes to stderr. Pipe-safe:
-
-```bash
-x402-proxy https://api.example.com/data | jq '.results'
-```
-
-## MCP Proxy (Alpha)
-
-Wraps a remote MCP server with automatic x402 payment. Configure in your MCP client:
+Let your AI agent consume any paid MCP server. Configure in Claude, Cursor, or any MCP client:
 
 ```json
 {
@@ -63,6 +36,41 @@ Wraps a remote MCP server with automatic x402 payment. Configure in your MCP cli
   }
 }
 ```
+
+The proxy sits between your agent and the remote server, intercepting 402 responses, paying automatically, and forwarding the result. Your agent never touches crypto.
+
+## HTTP Requests
+
+Works like curl. Response body streams to stdout, payment info goes to stderr.
+
+```bash
+# GET request
+x402-proxy https://twitter.surf.cascade.fyi/search?q=x402
+
+# POST with body and headers
+x402-proxy --method POST \
+  --header "Content-Type: application/json" \
+  --body '{"url":"https://x402.org"}' \
+  https://web.surf.cascade.fyi/v1/crawl
+
+# Pipe-safe
+x402-proxy https://api.example.com/data | jq '.results'
+```
+
+## Commands
+
+```bash
+x402-proxy <url>                    # paid HTTP request (default command)
+x402-proxy mcp <url>                # MCP stdio proxy for agents
+x402-proxy setup                    # onboarding wizard
+x402-proxy status                   # config + wallet + spend summary
+x402-proxy wallet                   # show addresses
+x402-proxy wallet history           # payment history
+x402-proxy wallet fund              # funding instructions
+x402-proxy wallet export-key <chain> # bare key to stdout (evm|solana)
+```
+
+All commands support `--help` for details.
 
 ## Wallet
 

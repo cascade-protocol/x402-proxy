@@ -4,9 +4,9 @@ import { mcpCommand } from "./commands/mcp.js";
 import { setupCommand } from "./commands/setup.js";
 import { statusCommand } from "./commands/status.js";
 import { walletInfoCommand } from "./commands/wallet.js";
-import { walletHistoryCommand } from "./commands/wallet-history.js";
-import { walletFundCommand } from "./commands/wallet-fund.js";
 import { walletExportCommand } from "./commands/wallet-export.js";
+import { walletFundCommand } from "./commands/wallet-fund.js";
+import { walletHistoryCommand } from "./commands/wallet-history.js";
 
 const walletRoutes = buildRouteMap({
   routes: {
@@ -31,14 +31,14 @@ const routes = buildRouteMap({
   },
   defaultCommand: "fetch",
   docs: {
-    brief: "x402 payment proxy - pay for any x402 resource",
+    brief: "curl for x402 paid APIs",
   },
 });
 
 export const app = buildApplication(routes, {
   name: "x402-proxy",
   versionInfo: {
-    currentVersion: "0.2.0",
+    currentVersion: "0.2.1",
   },
   scanner: {
     caseStyle: "allow-kebab-for-camel",

@@ -1,10 +1,14 @@
-import { buildCommand } from "@stricli/core";
+import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
+import { calcSpend, formatTxLine, readHistory } from "../history.js";
 import { getHistoryPath } from "../lib/config.js";
 import { info } from "../lib/output.js";
-import { calcSpend, formatTxLine, readHistory } from "../history.js";
 
-export const walletHistoryCommand = buildCommand({
+export const walletHistoryCommand = buildCommand<
+  { limit: number; json: boolean },
+  [],
+  CommandContext
+>({
   docs: {
     brief: "Show payment history",
   },
@@ -50,8 +54,7 @@ export const walletHistoryCommand = buildCommand({
 
     for (const r of slice) {
       // formatTxLine returns markdown links - strip them for terminal
-      const line = formatTxLine(r)
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"); // [text](url) -> text
+      const line = formatTxLine(r).replace(/\[([^\]]+)\]\([^)]+\)/g, "$1"); // [text](url) -> text
       console.log(line);
     }
 

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-12
+
+### Changed
+- Package description and keywords aligned with "curl for x402 paid APIs" positioning
+- README rewritten: real endpoint in Quick Start, MCP Proxy elevated above HTTP Requests
+- Stricli commands use explicit generic types (fixes TS 5.9 type inference)
+- `displayStatus()` extracted as callable function from status command
+- `PaymentRequirements.amount` used instead of removed `maxAmountRequired`
+
+### Fixed
+- All `tsc --noEmit` type errors resolved (previously passing only at build time)
+- Biome schema version bumped to match CLI 2.4.6
+
 ## [0.2.0] - 2026-03-12
 
 ### Added
@@ -36,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cascade-protocol/x402-proxy/releases/tag/v0.1.0

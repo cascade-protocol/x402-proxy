@@ -1,12 +1,21 @@
-import { buildCommand } from "@stricli/core";
+import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
-import { isConfigured, getHistoryPath, ensureConfigDir } from "../lib/config.js";
-import { resolveWallet, buildX402Client } from "../lib/resolve-wallet.js";
-import { error, info, isTTY, dim, warn } from "../lib/output.js";
 import { createX402ProxyHandler, extractTxSignature } from "../handler.js";
 import { appendHistory, type TxRecord } from "../history.js";
+import { ensureConfigDir, getHistoryPath, isConfigured } from "../lib/config.js";
+import { dim, error, info, isTTY } from "../lib/output.js";
+import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 
-export const fetchCommand = buildCommand({
+type FetchFlags = {
+  method: string;
+  body: string | undefined;
+  header: string[] | undefined;
+  evmKey: string | undefined;
+  solanaKey: string | undefined;
+  json: boolean;
+};
+
+export const fetchCommand = buildCommand<FetchFlags, [url?: string], CommandContext>({
   docs: {
     brief: "Make a paid HTTP request (default command)",
   },
@@ -17,7 +26,6 @@ export const fetchCommand = buildCommand({
         brief: "HTTP method",
         parse: String,
         default: "GET",
-        optional: true,
       },
       body: {
         kind: "parsed",
@@ -65,9 +73,8 @@ export const fetchCommand = buildCommand({
     // No URL: show status or onboarding
     if (!url) {
       if (isConfigured()) {
-        // Delegate to status display
-        const { statusCommand } = await import("./status.js");
-        statusCommand.func.call(this, {});
+        const { displayStatus } = await import("./status.js");
+        displayStatus();
       } else {
         console.log();
         console.log(pc.cyan("x402-proxy") + pc.dim(" - pay for any x402 resource"));
