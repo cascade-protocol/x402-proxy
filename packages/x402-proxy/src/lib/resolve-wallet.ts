@@ -1,7 +1,7 @@
+import { base58 } from "@scure/base";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
 import { x402Client } from "@x402/fetch";
 import { ExactSvmScheme } from "@x402/svm/exact/client";
-import { base58 } from "@scure/base";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
@@ -25,10 +25,7 @@ export type WalletResolution = {
  * 3. X402_PROXY_WALLET_MNEMONIC env var (derives both)
  * 4. ~/.config/x402-proxy/wallet.json (mnemonic file)
  */
-export function resolveWallet(opts?: {
-  evmKey?: string;
-  solanaKey?: string;
-}): WalletResolution {
+export function resolveWallet(opts?: { evmKey?: string; solanaKey?: string }): WalletResolution {
   // 1. Flags
   if (opts?.evmKey || opts?.solanaKey) {
     const result: WalletResolution = { source: "flag" };

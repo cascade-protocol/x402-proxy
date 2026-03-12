@@ -1,7 +1,7 @@
 import { buildCommand } from "@stricli/core";
 import pc from "picocolors";
-import { resolveWallet } from "../lib/resolve-wallet.js";
 import { info } from "../lib/output.js";
+import { resolveWallet } from "../lib/resolve-wallet.js";
 
 export const walletFundCommand = buildCommand({
   docs: {
@@ -38,9 +38,7 @@ export const walletFundCommand = buildCommand({
       console.log();
     }
 
-    console.log(
-      pc.dim("  Tip: Most x402 services accept USDC on Base or Solana."),
-    );
+    console.log(pc.dim("  Tip: Most x402 services accept USDC on Base or Solana."));
     console.log();
   },
 });

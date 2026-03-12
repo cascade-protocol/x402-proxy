@@ -70,15 +70,11 @@ export function loadConfig(): ProxyConfig | null {
       }
       // JSONC: strip // and /* */ comments before parsing
       if (name.endsWith(".jsonc")) {
-        const stripped = raw
-          .replace(/\/\/.*$/gm, "")
-          .replace(/\/\*[\s\S]*?\*\//g, "");
+        const stripped = raw.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
         return JSON.parse(stripped) as ProxyConfig;
       }
       return JSON.parse(raw) as ProxyConfig;
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   return null;
 }

@@ -1,7 +1,7 @@
 import { buildCommand } from "@stricli/core";
 import pc from "picocolors";
-import { resolveWallet } from "../lib/resolve-wallet.js";
 import { info } from "../lib/output.js";
+import { resolveWallet } from "../lib/resolve-wallet.js";
 
 export const walletInfoCommand = buildCommand({
   docs: {
@@ -17,11 +17,7 @@ export const walletInfoCommand = buildCommand({
     if (wallet.source === "none") {
       console.log(pc.yellow("No wallet configured."));
       console.log(pc.dim(`Run ${pc.cyan("x402-proxy setup")} to create one.`));
-      console.log(
-        pc.dim(
-          `Or set ${pc.cyan("X402_PROXY_WALLET_MNEMONIC")} environment variable.`,
-        ),
-      );
+      console.log(pc.dim(`Or set ${pc.cyan("X402_PROXY_WALLET_MNEMONIC")} environment variable.`));
       process.exit(1);
     }
 
