@@ -1,6 +1,6 @@
 {
   "name": "x402-proxy",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base and Solana.",
   "type": "module",
   "sideEffects": false,
@@ -22,6 +22,7 @@
     "build": "rm -rf dist && tsdown --publint",
     "dev": "tsdown --watch",
     "type-check": "tsc --noEmit",
+    "test": "vitest run",
     "check": "pnpm type-check && biome check --write",
     "prepublishOnly": "pnpm build"
   },
@@ -48,7 +49,8 @@
     "@types/node": "^22.0.0",
     "publint": "^0.3.17",
     "tsdown": "^0.20.3",
-    "typescript": "^5.9.0"
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.18"
   },
   "files": [
     "dist/**",

@@ -10,14 +10,7 @@ npx x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi
 
 That's it. The endpoint returns 402, x402-proxy pays and streams the response.
 
-First time? Set up a wallet:
-
-```bash
-npx x402-proxy setup          # generate wallet from BIP-39 mnemonic
-npx x402-proxy wallet fund    # see where to send USDC
-```
-
-One mnemonic derives both EVM (Base) and Solana keypairs. Fund either chain and go.
+No wallet? It'll walk you through setup automatically. One mnemonic derives both EVM (Base) and Solana keypairs. Fund either chain and go.
 
 ## MCP Proxy
 
@@ -45,29 +38,28 @@ Works like curl. Response body streams to stdout, payment info goes to stderr.
 
 ```bash
 # GET request
-x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi
+$ npx x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi
 
 # POST with body and headers
-x402-proxy --method POST \
+$ npx x402-proxy --method POST \
   --header "Content-Type: application/json" \
   --body '{"url":"https://x402.org"}' \
   https://web.surf.cascade.fyi/v1/crawl
 
 # Pipe-safe
-x402-proxy https://api.example.com/data | jq '.results'
+$ npx x402-proxy https://api.example.com/data | jq '.results'
 ```
 
 ## Commands
 
 ```bash
-x402-proxy <url>                    # paid HTTP request (default command)
-x402-proxy mcp <url>                # MCP stdio proxy for agents
-x402-proxy setup                    # onboarding wizard
-x402-proxy status                   # config + wallet + spend summary
-x402-proxy wallet                   # show addresses
-x402-proxy wallet history           # payment history
-x402-proxy wallet fund              # funding instructions
-x402-proxy wallet export-key <target> # bare key/mnemonic to stdout (evm|solana|mnemonic)
+$ npx x402-proxy <url>                    # paid HTTP request (default command)
+$ npx x402-proxy mcp <url>                # MCP stdio proxy for agents
+$ npx x402-proxy setup                    # onboarding wizard
+$ npx x402-proxy status                   # config + wallet + spend summary
+$ npx x402-proxy wallet                   # show addresses and balances
+$ npx x402-proxy wallet history           # payment history
+$ npx x402-proxy wallet export-key <target> # bare key/mnemonic to stdout (evm|solana|mnemonic)
 ```
 
 All commands support `--help` for details.
@@ -84,8 +76,8 @@ Config stored at `$XDG_CONFIG_HOME/x402-proxy/` (default `~/.config/x402-proxy/`
 
 ```bash
 # Pipe-safe - outputs bare key/mnemonic to stdout
-MY_KEY=$(npx x402-proxy wallet export-key evm)
-MY_MNEMONIC=$(npx x402-proxy wallet export-key mnemonic)
+$ MY_KEY=$(npx x402-proxy wallet export-key evm)
+$ MY_MNEMONIC=$(npx x402-proxy wallet export-key mnemonic)
 ```
 
 ## Env Vars

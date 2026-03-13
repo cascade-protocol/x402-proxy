@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-03-13
+
+### Added
+- Auto-setup: running `npx x402-proxy <url>` without a wallet launches the setup wizard, then continues with the request
+- 402 error handling parses the endpoint's `PAYMENT-REQUIRED` header to show actual accepted networks and costs
+- CI pipeline (GitHub Actions: check, build, test on push/PR)
+- Automated npm publishing with OIDC provenance on tag push
+- Tests for wallet derivation and transaction history (25 tests)
+- Funding hint in `wallet` when USDC balance is zero
+
+### Changed
+- Version injected at build time from package.json (no more stale hardcoded strings)
+- `wallet fund` command removed (addresses and hint shown in `wallet` directly)
+- All command references use `$ npx x402-proxy` format
+
 ## [0.3.1] - 2026-03-12
 
 ### Added
@@ -80,7 +95,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.0...v0.2.1

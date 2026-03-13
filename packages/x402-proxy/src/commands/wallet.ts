@@ -81,8 +81,11 @@ export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandC
 
     if (wallet.source === "none") {
       console.log(pc.yellow("No wallet configured."));
-      console.log(pc.dim(`Run ${pc.cyan("x402-proxy setup")} to create one.`));
-      console.log(pc.dim(`Or set ${pc.cyan("X402_PROXY_WALLET_MNEMONIC")} environment variable.`));
+      console.log(
+        pc.dim(
+          `\nRun:\n  ${pc.cyan("$ npx x402-proxy setup")}\n\nOr set ${pc.cyan("X402_PROXY_WALLET_MNEMONIC")} environment variable.`,
+        ),
+      );
       process.exit(1);
     }
 
@@ -106,6 +109,14 @@ export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandC
     if (wallet.solanaAddress) {
       const bal = sol ? balanceLine(sol.usdc, sol.sol, "SOL") : pc.dim(" (network error)");
       console.log(`  Solana: ${pc.green(wallet.solanaAddress)}${bal}`);
+    }
+
+    // Funding hint when both USDC balances are zero
+    const evmEmpty = !evm || evm.usdc === "0.00";
+    const solEmpty = !sol || sol.usdc === "0.00";
+    if (evmEmpty && solEmpty) {
+      console.log();
+      dim("  Send USDC to either address above to start using x402 APIs.");
     }
     console.log();
 
@@ -134,7 +145,7 @@ export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandC
     console.log();
 
     // Hints
-    console.log(pc.dim("  See also: wallet history, wallet fund, wallet export-key"));
+    console.log(pc.dim("  See also: wallet history, wallet export-key"));
     console.log();
   },
 });

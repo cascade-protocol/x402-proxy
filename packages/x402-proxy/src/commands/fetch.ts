@@ -1,4 +1,5 @@
 import { buildCommand, type CommandContext } from "@stricli/core";
+import type { PaymentRequired } from "@x402/fetch";
 import pc from "picocolors";
 import { createX402ProxyHandler, extractTxSignature } from "../handler.js";
 import { appendHistory, type TxRecord } from "../history.js";
@@ -91,7 +92,6 @@ Examples:
         console.log(`    ${pc.cyan("$ npx x402-proxy setup")}              Reconfigure wallet`);
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet")}             Addresses and balances`);
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet history")}     Full payment history`);
-        console.log(`    ${pc.cyan("$ npx x402-proxy wallet fund")}        Funding instructions`);
         console.log();
         console.log(
           pc.dim("  try: ") +
@@ -113,7 +113,6 @@ Examples:
         );
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet")}             Addresses and balances`);
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet history")}     Payment history`);
-        console.log(`    ${pc.cyan("$ npx x402-proxy wallet fund")}        Funding instructions`);
         console.log(`    ${pc.cyan("$ npx x402-proxy --help")}             All options`);
         console.log();
         console.log(pc.dim("  try: ") + pc.cyan("$ npx x402-proxy setup"));
@@ -133,15 +132,29 @@ Examples:
       process.exit(1);
     }
 
-    // Resolve wallet
-    const wallet = resolveWallet({
+    // Resolve wallet - auto-setup on first use
+    let wallet = resolveWallet({
       evmKey: flags.evmKey,
       solanaKey: flags.solanaKey,
     });
     if (wallet.source === "none") {
-      error("No wallet configured.");
-      console.error(pc.dim(`Run ${pc.cyan("x402-proxy setup")} or set X402_PROXY_WALLET_MNEMONIC`));
-      process.exit(1);
+      if (!isTTY()) {
+        error("No wallet configured.");
+        console.error(
+          pc.dim(
+            `Run:\n  ${pc.cyan("$ npx x402-proxy setup")}\n\nOr set X402_PROXY_WALLET_MNEMONIC`,
+          ),
+        );
+        process.exit(1);
+      }
+      dim("  No wallet found. Let's set one up first.\n");
+      const { runSetup } = await import("./setup.js");
+      await runSetup();
+      console.log();
+      wallet = resolveWallet();
+      if (wallet.source === "none") {
+        return;
+      }
     }
 
     const config = loadConfig();
@@ -183,8 +196,68 @@ Examples:
     const payment = shiftPayment();
     const txSig = extractTxSignature(response);
 
+    // Payment failed - show funding instructions from the endpoint's actual requirements
+    if (response.status === 402 && isTTY()) {
+      const prHeader =
+        response.headers.get("PAYMENT-REQUIRED") ?? response.headers.get("X-PAYMENT-REQUIRED");
+      let accepts: PaymentRequired["accepts"] = [];
+      if (prHeader) {
+        try {
+          const decoded = JSON.parse(Buffer.from(prHeader, "base64").toString()) as PaymentRequired;
+          accepts = decoded.accepts ?? [];
+        } catch {
+          // Fall through with empty accepts
+        }
+      }
+
+      if (accepts.length > 0) {
+        const cheapest = accepts.reduce((min, a) =>
+          Number(a.amount) < Number(min.amount) ? a : min,
+        );
+        const cost = (Number(cheapest.amount) / 1_000_000).toFixed(4);
+        error(`Payment required: ${cost} USDC`);
+      } else {
+        error("Payment required");
+      }
+
+      const hasEvm = accepts.some((a) => a.network.startsWith("eip155:"));
+      const hasSolana = accepts.some((a) => a.network.startsWith("solana:"));
+      const hasOther = accepts.some(
+        (a) => !a.network.startsWith("eip155:") && !a.network.startsWith("solana:"),
+      );
+
+      if (hasEvm || hasSolana) {
+        console.error();
+        dim("  Fund your wallet with USDC:");
+        if (hasEvm && wallet.evmAddress) {
+          console.error(`    Base:   ${pc.cyan(wallet.evmAddress)}`);
+        }
+        if (hasSolana && wallet.solanaAddress) {
+          console.error(`    Solana: ${pc.cyan(wallet.solanaAddress)}`);
+        }
+        if (hasEvm && !wallet.evmAddress) {
+          dim("    Base:   endpoint accepts EVM but no EVM wallet configured");
+        }
+        if (hasSolana && !wallet.solanaAddress) {
+          dim("    Solana: endpoint accepts Solana but no Solana wallet configured");
+        }
+      } else if (hasOther) {
+        const networks = [...new Set(accepts.map((a) => a.network))].join(", ");
+        console.error();
+        error(`This endpoint only accepts payment on unsupported networks: ${networks}`);
+      }
+
+      console.error();
+      dim("  Then re-run:");
+      console.error(`    ${pc.cyan(`$ npx x402-proxy ${url}`)}`);
+      console.error();
+      return;
+    }
+
     if (payment && isTTY()) {
-      info(`  Payment: ${payment.amount ?? "?"} (${payment.network ?? "unknown"})`);
+      info(
+        `  Payment: ${payment.amount ? (Number(payment.amount) / 1_000_000).toFixed(4) : "?"} USDC (${payment.network ?? "unknown"})`,
+      );
       if (txSig) dim(`  Tx: ${txSig}`);
     }
 

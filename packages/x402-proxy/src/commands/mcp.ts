@@ -1,3 +1,5 @@
+declare const __VERSION__: string;
+
 import { buildCommand, type CommandContext } from "@stricli/core";
 import { appendHistory, type TxRecord } from "../history.js";
 import { ensureConfigDir, getHistoryPath, loadConfig } from "../lib/config.js";
@@ -52,7 +54,9 @@ Add to your MCP client config (Claude, Cursor, etc.):
     });
 
     if (wallet.source === "none") {
-      error("No wallet configured. Set X402_PROXY_WALLET_MNEMONIC or run x402-proxy setup.");
+      error(
+        "No wallet configured.\nRun:\n  $ npx x402-proxy setup\n\nOr set X402_PROXY_WALLET_MNEMONIC",
+      );
       process.exit(1);
     }
 
@@ -79,7 +83,7 @@ Add to your MCP client config (Claude, Cursor, etc.):
     const { x402MCPClient } = await import("@x402/mcp");
 
     // Connect to remote MCP server
-    const remoteClient = new Client({ name: "x402-proxy", version: "0.3.0" });
+    const remoteClient = new Client({ name: "x402-proxy", version: __VERSION__ });
     const x402Mcp = new x402MCPClient(remoteClient, x402PaymentClient, {
       autoPayment: true,
       onPaymentRequested: (ctx) => {
@@ -141,7 +145,7 @@ Add to your MCP client config (Claude, Cursor, etc.):
     // Create local MCP server (stdio)
     const localServer = new McpServer({
       name: "x402-proxy",
-      version: "0.3.0",
+      version: __VERSION__,
     });
 
     // Register each remote tool as a local tool that proxies through x402

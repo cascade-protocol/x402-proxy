@@ -27,7 +27,7 @@ CLI and library for x402 paid HTTP requests and MCP proxy. Monorepo with single 
 - Build package only: `cd packages/x402-proxy && pnpm build`
 
 ## Key Files
-- `src/app.ts` - Stricli route map, **contains versionInfo that must match package.json**
+- `src/app.ts` - Stricli route map (version injected via `__VERSION__` at build time)
 - `src/bin/cli.ts` - CLI entry point
 - `src/lib/resolve-wallet.ts` - wallet resolution cascade (flags > env > mnemonic > file)
 - `src/lib/derive.ts` - BIP-39 mnemonic derivation (Solana + EVM)
@@ -53,23 +53,36 @@ pnpm check    # type-check + biome lint (from root)
 pnpm build    # clean + tsdown --publint (via Turbo)
 ```
 
+## Version Management
+- Version is defined ONLY in `packages/x402-proxy/package.json`
+- `tsdown.config.ts` reads it and injects as `__VERSION__` at build time via `define`
+- `src/app.ts` and `src/commands/mcp.ts` use `__VERSION__` - never hardcode version strings in source
+
 ## Release Workflow
 
-**Order: check -> build -> version bump -> changelog -> commit + tag + push -> ask user to publish -> verify -> GitHub release**
+**CRITICAL: Before saying "ready to release", run through EVERY item in this checklist. Do NOT skip any step.**
 
-1. Run `pnpm check` and `pnpm build` (publint validates package) - stop on any failure
-2. Bump version in both `packages/x402-proxy/package.json` and `packages/x402-proxy/src/app.ts` (Stricli `versionInfo.currentVersion`)
-3. Update `packages/x402-proxy/CHANGELOG.md` (add new `## [<version>] - YYYY-MM-DD` section, add comparison link at bottom)
-4. Commit, tag, and push:
+### Pre-release checklist (run through ALL before committing)
+- [ ] `pnpm check` passes (type-check + biome)
+- [ ] `pnpm build` passes (publint validates package)
+- [ ] `pnpm --filter x402-proxy test` passes
+- [ ] Version bumped in `packages/x402-proxy/package.json` (the ONLY place - __VERSION__ handles the rest)
+- [ ] `CHANGELOG.md` updated: new `## [<version>] - YYYY-MM-DD` section with all changes since last release
+- [ ] `CHANGELOG.md` comparison links updated at bottom of file
+- [ ] README.md reflects any command/feature changes
+- [ ] No stale version strings anywhere in source (grep for old version number)
+
+### Release steps
+1. Commit and tag:
    ```bash
-   git add packages/x402-proxy/package.json packages/x402-proxy/src/app.ts packages/x402-proxy/CHANGELOG.md
+   git add -A
    git commit -m "chore(release): bump to <version>"
    git tag v<version>
    git push && git push origin v<version>
    ```
-5. Publish from `packages/x402-proxy/`: `pnpm publish` (no `--no-git-checks`, working tree must be clean)
-6. After publish, verify with `npm view x402-proxy@<version> bin`
-7. Create GitHub release:
+2. CI publishes automatically via `.github/workflows/publish.yml` (OIDC provenance, triggered on `v*` tags)
+3. Verify: `npm view x402-proxy@<version> bin`
+4. Create GitHub release:
    ```bash
    gh release create v<version> --title "v<version>" --notes "$(cat <<'EOF'
    <paste relevant CHANGELOG section>

@@ -1,4 +1,7 @@
+import { readFileSync } from "node:fs";
 import { defineConfig } from "tsdown";
+
+const { version } = JSON.parse(readFileSync("./package.json", "utf-8"));
 
 export default defineConfig([
   {
@@ -9,6 +12,7 @@ export default defineConfig([
     clean: true,
     treeshake: true,
     banner: { js: "#!/usr/bin/env node" },
+    define: { __VERSION__: JSON.stringify(version) },
   },
   {
     entry: { index: "src/index.ts" },
