@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-13
+
+### Changed
+- Extracted `createNetworkFilter`, `createNetworkPreference`, `networkToCaipPrefix` as exported functions for testability
+- Publish workflow auto-creates GitHub releases from CHANGELOG.md (no more manual `gh release create`)
+- Release docs updated in CLAUDE.md with `act` dry-run instructions for CI workflows
+
+### Added
+- Tests for network filter, network preference selector, Solana address derivation, and wallet resolution (14 new tests)
+
 ## [0.4.0] - 2026-03-13
 
 ### Added
@@ -110,7 +120,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.0...v0.3.1

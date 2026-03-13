@@ -76,16 +76,28 @@ pnpm build    # clean + tsdown --publint (via Turbo)
 1. Commit and tag:
    ```bash
    git add -A
-   git commit -m "chore(release): bump to <version>"
+   git commit -m "feat(scope): descriptive summary of changes"
    git tag v<version>
    git push && git push origin v<version>
    ```
 2. CI publishes automatically via `.github/workflows/publish.yml` (OIDC provenance, triggered on `v*` tags)
-3. Verify: `npm view x402-proxy@<version> bin`
-4. Create GitHub release:
-   ```bash
-   gh release create v<version> --title "v<version>" --notes "$(cat <<'EOF'
-   <paste relevant CHANGELOG section>
-   EOF
-   )"
-   ```
+3. The publish workflow also auto-creates a GitHub release by extracting the matching version section from `CHANGELOG.md`
+4. Verify: `npm view x402-proxy@<version> bin`
+
+**Note:** Commit messages must describe the actual changes, not just "bump to X". Use conventional commit format with a meaningful summary.
+
+## Testing CI Workflows
+
+Use [act](https://github.com/nektos/act) to test GitHub Actions locally before pushing.
+
+```bash
+# Dry-run CI workflow
+act -n --workflows .github/workflows/ci.yml -s GITHUB_TOKEN="$(gh auth token)"
+
+# Dry-run publish workflow (simulating a tag push)
+act -n --workflows .github/workflows/publish.yml \
+  -e <(echo '{"ref":"refs/tags/v<version>"}') \
+  -s GITHUB_TOKEN="$(gh auth token)"
+```
+
+Always dry-run with act after modifying workflow files to catch issues before pushing.

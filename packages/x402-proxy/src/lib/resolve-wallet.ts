@@ -2,7 +2,7 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { base58 } from "@scure/base";
 import { toClientEvmSigner } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
-import { type PaymentRequirements, x402Client } from "@x402/fetch";
+import { type PaymentPolicy, type SelectPaymentRequirements, x402Client } from "@x402/fetch";
 import { registerExactSvmScheme } from "@x402/svm/exact/client";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -112,7 +112,7 @@ function solanaAddressFromKey(keyBytes: Uint8Array): string {
   return base58.encode(ed25519.getPublicKey(keyBytes));
 }
 
-function networkToCaipPrefix(name: string): string {
+export function networkToCaipPrefix(name: string): string {
   switch (name.toLowerCase()) {
     case "base":
       return "eip155:8453";
@@ -121,6 +121,25 @@ function networkToCaipPrefix(name: string): string {
     default:
       return name;
   }
+}
+
+export function createNetworkFilter(network: string): PaymentPolicy {
+  const prefix = networkToCaipPrefix(network);
+  return (_version, reqs) => {
+    const filtered = reqs.filter((r) => r.network.startsWith(prefix));
+    if (filtered.length === 0) {
+      const available = [...new Set(reqs.map((r) => displayNetwork(r.network)))].join(", ");
+      throw new Error(`Network '${network}' not accepted. Available: ${available}`);
+    }
+    return filtered;
+  };
+}
+
+export function createNetworkPreference(network: string): SelectPaymentRequirements {
+  const prefix = networkToCaipPrefix(network);
+  return (_version, accepts) => {
+    return accepts.find((r) => r.network.startsWith(prefix)) || accepts[0];
+  };
 }
 
 export type BuildClientOptions = {
@@ -138,14 +157,8 @@ export async function buildX402Client(
   wallet: WalletResolution,
   opts?: BuildClientOptions,
 ): Promise<x402Client> {
-  // Network preference: sort accepts to prefer configured network
   const selector = opts?.preferredNetwork
-    ? (() => {
-        const prefix = networkToCaipPrefix(opts.preferredNetwork as string);
-        return (_version: number, accepts: PaymentRequirements[]) => {
-          return accepts.find((r) => r.network.startsWith(prefix)) || accepts[0];
-        };
-      })()
+    ? createNetworkPreference(opts.preferredNetwork)
     : undefined;
 
   const client = new x402Client(selector);
@@ -164,17 +177,8 @@ export async function buildX402Client(
     registerExactSvmScheme(client, { signer });
   }
 
-  // Network hard filter: fail if server doesn't accept the requested network
   if (opts?.network) {
-    const prefix = networkToCaipPrefix(opts.network);
-    client.registerPolicy((_version, reqs) => {
-      const filtered = reqs.filter((r) => r.network.startsWith(prefix));
-      if (filtered.length === 0) {
-        const available = [...new Set(reqs.map((r) => displayNetwork(r.network)))].join(", ");
-        throw new Error(`Network '${opts.network}' not accepted. Available: ${available}`);
-      }
-      return filtered;
-    });
+    client.registerPolicy(createNetworkFilter(opts.network));
   }
 
   // Spend limit policies
