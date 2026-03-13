@@ -36,7 +36,7 @@ export async function fetchEvmBalances(address: string): Promise<{ eth: string; 
   ])) as [RpcResult, RpcResult];
 
   const eth = ethRes.result ? (Number(BigInt(ethRes.result)) / 1e18).toFixed(6) : "?";
-  const usdc = usdcRes.result ? (Number(BigInt(usdcRes.result)) / 1e6).toFixed(2) : "?";
+  const usdc = usdcRes.result ? (Number(BigInt(usdcRes.result)) / 1e6).toFixed(4) : "?";
   return { eth, usdc };
 }
 
@@ -53,8 +53,8 @@ export async function fetchSolanaBalances(address: string): Promise<{ sol: strin
   const sol = solRes.result?.value != null ? (solRes.result.value / 1e9).toFixed(6) : "?";
   const accounts = usdcRes.result?.value;
   const usdc = accounts?.length
-    ? Number(accounts[0].account.data.parsed.info.tokenAmount.uiAmountString).toFixed(2)
-    : "0.00";
+    ? Number(accounts[0].account.data.parsed.info.tokenAmount.uiAmountString).toFixed(4)
+    : "0.0000";
   return { sol, usdc };
 }
 
@@ -112,8 +112,8 @@ export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandC
     }
 
     // Funding hint when both USDC balances are zero
-    const evmEmpty = !evm || evm.usdc === "0.00";
-    const solEmpty = !sol || sol.usdc === "0.00";
+    const evmEmpty = !evm || evm.usdc === "0.0000";
+    const solEmpty = !sol || sol.usdc === "0.0000";
     if (evmEmpty && solEmpty) {
       console.log();
       dim("  Send USDC to either address above to start using x402 APIs.");

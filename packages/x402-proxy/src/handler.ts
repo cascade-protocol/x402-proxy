@@ -57,7 +57,7 @@ export function createX402ProxyHandler(opts: X402ProxyOptions): X402ProxyHandler
     paymentQueue.push({
       network: hookCtx.selectedRequirements.network,
       payTo: hookCtx.selectedRequirements.payTo,
-      amount: raw?.startsWith("debug.") ? raw.slice(6) : raw,
+      amount: raw,
       asset: hookCtx.selectedRequirements.asset,
     });
   });

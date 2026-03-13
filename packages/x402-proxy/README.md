@@ -46,6 +46,9 @@ $ npx x402-proxy --method POST \
   --body '{"url":"https://x402.org"}' \
   https://web.surf.cascade.fyi/v1/crawl
 
+# Force a specific network
+$ npx x402-proxy --network base https://api.example.com/data
+
 # Pipe-safe
 $ npx x402-proxy https://api.example.com/data | jq '.results'
 ```

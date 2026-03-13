@@ -131,6 +131,13 @@ function shortModel(model: string): string {
   return name.replace(/-\d{6,8}$/, "").replace(/-\d{4}$/, "");
 }
 
+export function displayNetwork(net: string): string {
+  if (net === "eip155:8453") return "Base";
+  if (net.startsWith("eip155:")) return `EVM (${net.split(":")[1]})`;
+  if (net.startsWith("solana:")) return "Solana";
+  return net;
+}
+
 function shortNetwork(net: string): string {
   if (net === "eip155:8453") return "base";
   if (net.startsWith("eip155:")) return `evm:${net.split(":")[1]}`;

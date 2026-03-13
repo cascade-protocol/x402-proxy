@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-13
+
+### Added
+- `--network` flag for `fetch` and `mcp` commands - hard filter that requires a specific network (base, solana, or CAIP-2 ID), fails with clear error if unavailable
+- Human-readable network names in payment output ("Base", "Solana" instead of "eip155:8453")
+- `displayNetwork()` exported from library for mapping CAIP-2 IDs to display names
+
+### Fixed
+- Wildcard scheme registration (`eip155:*`, `solana:*`) via SDK helpers - payment signing now works for any EVM chain a server requests, not just Base
+- Solana address derivation for `--solana-key` flag and `X402_PROXY_WALLET_SOLANA_KEY` env var - balance detection, wallet display, and history recording were broken without it
+- MCP command now auto-detects preferred network based on USDC balance (same fix previously applied to `fetch`)
+- MCP payment history records now include `amount`, `to`, and correct `network` (removed fragile type cast)
+- Removed debug prefix stripping from payment amounts in handler
+- USDC balance display now shows 4 decimal places (was 2)
+
 ## [0.3.2] - 2026-03-13
 
 ### Added
@@ -95,7 +110,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.2.1...v0.3.0

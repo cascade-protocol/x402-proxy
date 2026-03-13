@@ -2,7 +2,7 @@ import { buildCommand, type CommandContext } from "@stricli/core";
 import type { PaymentRequired } from "@x402/fetch";
 import pc from "picocolors";
 import { createX402ProxyHandler, extractTxSignature } from "../handler.js";
-import { appendHistory, type TxRecord } from "../history.js";
+import { appendHistory, displayNetwork, type TxRecord } from "../history.js";
 import { ensureConfigDir, getHistoryPath, isConfigured, loadConfig } from "../lib/config.js";
 import { dim, error, info, isTTY } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
@@ -13,6 +13,7 @@ type FetchFlags = {
   header: string[] | undefined;
   evmKey: string | undefined;
   solanaKey: string | undefined;
+  network: string | undefined;
   json: boolean;
 };
 
@@ -56,6 +57,12 @@ Examples:
       solanaKey: {
         kind: "parsed",
         brief: "Solana private key (base58)",
+        parse: String,
+        optional: true,
+      },
+      network: {
+        kind: "parsed",
+        brief: "Require specific network (base, solana)",
         parse: String,
         optional: true,
       },
@@ -158,8 +165,27 @@ Examples:
     }
 
     const config = loadConfig();
+
+    // Auto-detect preferred network based on balance when not configured
+    let preferredNetwork = config?.defaultNetwork;
+    if (!preferredNetwork && wallet.evmAddress && wallet.solanaAddress) {
+      const { fetchEvmBalances, fetchSolanaBalances } = await import("./wallet.js");
+      const [evmBal, solBal] = await Promise.allSettled([
+        fetchEvmBalances(wallet.evmAddress),
+        fetchSolanaBalances(wallet.solanaAddress),
+      ]);
+      const evmUsdc = evmBal.status === "fulfilled" ? Number(evmBal.value?.usdc ?? 0) : 0;
+      const solUsdc = solBal.status === "fulfilled" ? Number(solBal.value?.usdc ?? 0) : 0;
+      if (evmUsdc > solUsdc) {
+        preferredNetwork = "base";
+      } else if (solUsdc > evmUsdc) {
+        preferredNetwork = "solana";
+      }
+    }
+
     const client = await buildX402Client(wallet, {
-      preferredNetwork: config?.defaultNetwork,
+      preferredNetwork,
+      network: flags.network,
       spendLimitDaily: config?.spendLimitDaily,
       spendLimitPerTx: config?.spendLimitPerTx,
     });
@@ -196,7 +222,7 @@ Examples:
     const payment = shiftPayment();
     const txSig = extractTxSignature(response);
 
-    // Payment failed - show funding instructions from the endpoint's actual requirements
+    // Payment failed - check balances and show appropriate message
     if (response.status === 402 && isTTY()) {
       const prHeader =
         response.headers.get("PAYMENT-REQUIRED") ?? response.headers.get("X-PAYMENT-REQUIRED");
@@ -210,14 +236,14 @@ Examples:
         }
       }
 
+      let costNum = 0;
+      let costStr = "?";
       if (accepts.length > 0) {
         const cheapest = accepts.reduce((min, a) =>
           Number(a.amount) < Number(min.amount) ? a : min,
         );
-        const cost = (Number(cheapest.amount) / 1_000_000).toFixed(4);
-        error(`Payment required: ${cost} USDC`);
-      } else {
-        error("Payment required");
+        costNum = Number(cheapest.amount) / 1_000_000;
+        costStr = costNum.toFixed(4);
       }
 
       const hasEvm = accepts.some((a) => a.network.startsWith("eip155:"));
@@ -226,37 +252,104 @@ Examples:
         (a) => !a.network.startsWith("eip155:") && !a.network.startsWith("solana:"),
       );
 
-      if (hasEvm || hasSolana) {
-        console.error();
-        dim("  Fund your wallet with USDC:");
-        if (hasEvm && wallet.evmAddress) {
-          console.error(`    Base:   ${pc.cyan(wallet.evmAddress)}`);
+      // Check on-chain balances to give actionable feedback
+      const { fetchEvmBalances, fetchSolanaBalances } = await import("./wallet.js");
+      let evmUsdc = 0;
+      let solUsdc = 0;
+      if (hasEvm && wallet.evmAddress) {
+        try {
+          const bal = await fetchEvmBalances(wallet.evmAddress);
+          evmUsdc = Number(bal.usdc);
+        } catch {
+          // Network error - fall through with 0
         }
-        if (hasSolana && wallet.solanaAddress) {
-          console.error(`    Solana: ${pc.cyan(wallet.solanaAddress)}`);
+      }
+      if (hasSolana && wallet.solanaAddress) {
+        try {
+          const bal = await fetchSolanaBalances(wallet.solanaAddress);
+          solUsdc = Number(bal.usdc);
+        } catch {
+          // Network error - fall through with 0
         }
-        if (hasEvm && !wallet.evmAddress) {
-          dim("    Base:   endpoint accepts EVM but no EVM wallet configured");
-        }
-        if (hasSolana && !wallet.solanaAddress) {
-          dim("    Solana: endpoint accepts Solana but no Solana wallet configured");
-        }
-      } else if (hasOther) {
-        const networks = [...new Set(accepts.map((a) => a.network))].join(", ");
-        console.error();
-        error(`This endpoint only accepts payment on unsupported networks: ${networks}`);
       }
 
-      console.error();
-      dim("  Then re-run:");
-      console.error(`    ${pc.cyan(`$ npx x402-proxy ${url}`)}`);
-      console.error();
+      const hasSufficientBalance =
+        (hasEvm && evmUsdc >= costNum) || (hasSolana && solUsdc >= costNum);
+
+      if (hasSufficientBalance) {
+        // Balance is sufficient but payment failed - read server error
+        let serverReason: string | undefined;
+        try {
+          const body = await response.text();
+          if (body) {
+            const parsed = JSON.parse(body) as { error?: string; message?: string };
+            serverReason = parsed.error || parsed.message;
+          }
+        } catch {
+          // Not JSON or no body
+        }
+
+        error(`Payment failed: ${costStr} USDC`);
+        console.error();
+        if (payment) {
+          dim("  Payment was signed and sent but rejected by the server.");
+        } else {
+          dim("  Payment was not attempted despite sufficient balance.");
+        }
+        if (serverReason) {
+          dim(`  Reason: ${serverReason}`);
+        }
+        if (hasEvm && wallet.evmAddress && evmUsdc > 0) {
+          console.error(
+            `    Base:   ${pc.cyan(wallet.evmAddress)} ${pc.dim(`(${evmUsdc.toFixed(4)} USDC)`)}`,
+          );
+        }
+        if (hasSolana && wallet.solanaAddress && solUsdc > 0) {
+          console.error(
+            `    Solana: ${pc.cyan(wallet.solanaAddress)} ${pc.dim(`(${solUsdc.toFixed(4)} USDC)`)}`,
+          );
+        }
+        console.error();
+        dim("  This may be a temporary server-side issue. Try again in a moment.");
+        console.error();
+      } else {
+        // Insufficient balance
+        error(`Payment required: ${costStr} USDC`);
+
+        if (hasEvm || hasSolana) {
+          console.error();
+          dim("  Fund your wallet with USDC:");
+          if (hasEvm && wallet.evmAddress) {
+            const balHint = evmUsdc > 0 ? pc.dim(` (${evmUsdc.toFixed(4)} USDC)`) : "";
+            console.error(`    Base:   ${pc.cyan(wallet.evmAddress)}${balHint}`);
+          }
+          if (hasSolana && wallet.solanaAddress) {
+            const balHint = solUsdc > 0 ? pc.dim(` (${solUsdc.toFixed(4)} USDC)`) : "";
+            console.error(`    Solana: ${pc.cyan(wallet.solanaAddress)}${balHint}`);
+          }
+          if (hasEvm && !wallet.evmAddress) {
+            dim("    Base:   endpoint accepts EVM but no EVM wallet configured");
+          }
+          if (hasSolana && !wallet.solanaAddress) {
+            dim("    Solana: endpoint accepts Solana but no Solana wallet configured");
+          }
+        } else if (hasOther) {
+          const networks = [...new Set(accepts.map((a) => a.network))].join(", ");
+          console.error();
+          error(`This endpoint only accepts payment on unsupported networks: ${networks}`);
+        }
+
+        console.error();
+        dim("  Then re-run:");
+        console.error(`    ${pc.cyan(`$ npx x402-proxy ${url}`)}`);
+        console.error();
+      }
       return;
     }
 
     if (payment && isTTY()) {
       info(
-        `  Payment: ${payment.amount ? (Number(payment.amount) / 1_000_000).toFixed(4) : "?"} USDC (${payment.network ?? "unknown"})`,
+        `  Payment: ${payment.amount ? (Number(payment.amount) / 1_000_000).toFixed(4) : "?"} USDC (${displayNetwork(payment.network ?? "unknown")})`,
       );
       if (txSig) dim(`  Tx: ${txSig}`);
     }

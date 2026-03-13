@@ -1,7 +1,7 @@
 declare const __VERSION__: string;
 
 import { buildCommand, type CommandContext } from "@stricli/core";
-import { appendHistory, type TxRecord } from "../history.js";
+import { appendHistory, displayNetwork, type TxRecord } from "../history.js";
 import { ensureConfigDir, getHistoryPath, loadConfig } from "../lib/config.js";
 import { dim, error, warn } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
@@ -9,6 +9,7 @@ import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 type McpFlags = {
   evmKey: string | undefined;
   solanaKey: string | undefined;
+  network: string | undefined;
 };
 
 export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandContext>({
@@ -32,6 +33,12 @@ Add to your MCP client config (Claude, Cursor, etc.):
       solanaKey: {
         kind: "parsed",
         brief: "Solana private key (base58)",
+        parse: String,
+        optional: true,
+      },
+      network: {
+        kind: "parsed",
+        brief: "Require specific network (base, solana)",
         parse: String,
         optional: true,
       },
@@ -66,8 +73,27 @@ Add to your MCP client config (Claude, Cursor, etc.):
     if (wallet.solanaAddress) dim(`  Solana: ${wallet.solanaAddress}`);
 
     const config = loadConfig();
+
+    // Auto-detect preferred network based on balance when not configured
+    let preferredNetwork = config?.defaultNetwork;
+    if (!preferredNetwork && wallet.evmAddress && wallet.solanaAddress) {
+      const { fetchEvmBalances, fetchSolanaBalances } = await import("./wallet.js");
+      const [evmBal, solBal] = await Promise.allSettled([
+        fetchEvmBalances(wallet.evmAddress),
+        fetchSolanaBalances(wallet.solanaAddress),
+      ]);
+      const evmUsdc = evmBal.status === "fulfilled" ? Number(evmBal.value?.usdc ?? 0) : 0;
+      const solUsdc = solBal.status === "fulfilled" ? Number(solBal.value?.usdc ?? 0) : 0;
+      if (evmUsdc > solUsdc) {
+        preferredNetwork = "base";
+      } else if (solUsdc > evmUsdc) {
+        preferredNetwork = "solana";
+      }
+    }
+
     const x402PaymentClient = await buildX402Client(wallet, {
-      preferredNetwork: config?.defaultNetwork,
+      preferredNetwork,
+      network: flags.network,
       spendLimitDaily: config?.spendLimitDaily,
       spendLimitPerTx: config?.spendLimitPerTx,
     });
@@ -89,7 +115,10 @@ Add to your MCP client config (Claude, Cursor, etc.):
       onPaymentRequested: (ctx) => {
         const accept = ctx.paymentRequired.accepts?.[0];
         if (accept) {
-          warn(`  Payment: ${accept.amount} on ${accept.network} for tool "${ctx.toolName}"`);
+          const amount = accept.amount ? (Number(accept.amount) / 1_000_000).toFixed(4) : "?";
+          warn(
+            `  Payment: ${amount} USDC on ${displayNetwork(accept.network)} for tool "${ctx.toolName}"`,
+          );
         }
         return true;
       },
@@ -98,15 +127,17 @@ Add to your MCP client config (Claude, Cursor, etc.):
     // Track payments
     x402Mcp.onAfterPayment(async (ctx) => {
       ensureConfigDir();
+      const accepted = ctx.paymentPayload.accepted;
       const tx = ctx.settleResponse?.transaction;
-      const accept = ctx.paymentPayload;
       const record: TxRecord = {
         t: Date.now(),
         ok: true,
         kind: "x402_payment",
-        net: (accept as { network?: string }).network ?? "unknown",
+        net: accepted?.network ?? "unknown",
         from: wallet.evmAddress ?? wallet.solanaAddress ?? "unknown",
+        to: accepted?.payTo,
         tx: typeof tx === "string" ? tx : undefined,
+        amount: accepted?.amount ? Number(accepted.amount) / 1_000_000 : undefined,
         token: "USDC",
         label: `mcp:${ctx.toolName}`,
       };

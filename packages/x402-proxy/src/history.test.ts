@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   appendHistory,
   calcSpend,
+  displayNetwork,
   explorerUrl,
   formatTxLine,
   HISTORY_KEEP_LINES,
@@ -94,6 +95,26 @@ describe("explorerUrl", () => {
 
   it("returns solscan URL for Solana network", () => {
     expect(explorerUrl("solana:mainnet", "abc123")).toBe("https://solscan.io/tx/abc123");
+  });
+});
+
+// --- displayNetwork ---
+
+describe("displayNetwork", () => {
+  it("returns Base for eip155:8453", () => {
+    expect(displayNetwork("eip155:8453")).toBe("Base");
+  });
+
+  it("returns Solana for solana networks", () => {
+    expect(displayNetwork("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp")).toBe("Solana");
+  });
+
+  it("returns EVM with chain ID for unknown EVM chains", () => {
+    expect(displayNetwork("eip155:1")).toBe("EVM (1)");
+  });
+
+  it("returns raw string for unknown networks", () => {
+    expect(displayNetwork("unknown")).toBe("unknown");
   });
 });
 

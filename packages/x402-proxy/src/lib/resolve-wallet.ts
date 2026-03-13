@@ -1,11 +1,13 @@
+import { ed25519 } from "@noble/curves/ed25519.js";
 import { base58 } from "@scure/base";
-import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
+import { toClientEvmSigner } from "@x402/evm";
+import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { type PaymentRequirements, x402Client } from "@x402/fetch";
-import { ExactSvmScheme } from "@x402/svm/exact/client";
+import { registerExactSvmScheme } from "@x402/svm/exact/client";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { calcSpend, readHistory } from "../history.js";
+import { calcSpend, displayNetwork, readHistory } from "../history.js";
 import { getHistoryPath, loadWalletFile } from "./config.js";
 import { deriveEvmKeypair, deriveSolanaKeypair } from "./derive.js";
 
@@ -38,6 +40,7 @@ export function resolveWallet(opts?: { evmKey?: string; solanaKey?: string }): W
     if (opts.solanaKey) {
       // Accept base58 secret key or JSON array format
       result.solanaKey = parsesolanaKey(opts.solanaKey);
+      result.solanaAddress = solanaAddressFromKey(result.solanaKey);
     }
     return result;
   }
@@ -54,6 +57,7 @@ export function resolveWallet(opts?: { evmKey?: string; solanaKey?: string }): W
     }
     if (envSol) {
       result.solanaKey = parsesolanaKey(envSol);
+      result.solanaAddress = solanaAddressFromKey(result.solanaKey);
     }
     return result;
   }
@@ -101,6 +105,13 @@ function parsesolanaKey(input: string): Uint8Array {
   return base58.decode(trimmed);
 }
 
+function solanaAddressFromKey(keyBytes: Uint8Array): string {
+  // 64-byte keypair: public key is the last 32 bytes
+  if (keyBytes.length >= 64) return base58.encode(keyBytes.slice(32));
+  // 32-byte secret: derive public key
+  return base58.encode(ed25519.getPublicKey(keyBytes));
+}
+
 function networkToCaipPrefix(name: string): string {
   switch (name.toLowerCase()) {
     case "base":
@@ -114,6 +125,8 @@ function networkToCaipPrefix(name: string): string {
 
 export type BuildClientOptions = {
   preferredNetwork?: string;
+  /** Hard filter: fail if server doesn't accept this network */
+  network?: string;
   spendLimitDaily?: number;
   spendLimitPerTx?: number;
 };
@@ -142,14 +155,26 @@ export async function buildX402Client(
     const account = privateKeyToAccount(hex);
     const publicClient = createPublicClient({ chain: base, transport: http() });
     const signer = toClientEvmSigner(account, publicClient);
-    client.register("eip155:8453", new ExactEvmScheme(signer));
+    registerExactEvmScheme(client, { signer });
   }
 
   if (wallet.solanaKey) {
     const { createKeyPairSignerFromBytes } = await import("@solana/kit");
     const signer = await createKeyPairSignerFromBytes(wallet.solanaKey);
-    client.register("solana:mainnet", new ExactSvmScheme(signer));
-    client.register("solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp", new ExactSvmScheme(signer));
+    registerExactSvmScheme(client, { signer });
+  }
+
+  // Network hard filter: fail if server doesn't accept the requested network
+  if (opts?.network) {
+    const prefix = networkToCaipPrefix(opts.network);
+    client.registerPolicy((_version, reqs) => {
+      const filtered = reqs.filter((r) => r.network.startsWith(prefix));
+      if (filtered.length === 0) {
+        const available = [...new Set(reqs.map((r) => displayNetwork(r.network)))].join(", ");
+        throw new Error(`Network '${opts.network}' not accepted. Available: ${available}`);
+      }
+      return filtered;
+    });
   }
 
   // Spend limit policies
