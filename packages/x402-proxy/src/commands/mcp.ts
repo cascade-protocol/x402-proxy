@@ -14,7 +14,7 @@ type McpFlags = {
 
 export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandContext>({
   docs: {
-    brief: "Start MCP stdio proxy with x402 payment (alpha)",
+    brief: "Start MCP stdio proxy with x402 payment",
     fullDescription: `Start an MCP stdio proxy with automatic x402 payment for AI agents.
 
 Add to your MCP client config (Claude, Cursor, etc.):
@@ -67,7 +67,6 @@ Add to your MCP client config (Claude, Cursor, etc.):
       process.exit(1);
     }
 
-    warn("Note: MCP proxy is alpha - please report issues.");
     dim(`x402-proxy MCP proxy -> ${remoteUrl}`);
     if (wallet.evmAddress) dim(`  EVM:    ${wallet.evmAddress}`);
     if (wallet.solanaAddress) dim(`  Solana: ${wallet.solanaAddress}`);
@@ -104,7 +103,7 @@ Add to your MCP client config (Claude, Cursor, etc.):
     const { StreamableHTTPClientTransport } = await import(
       "@modelcontextprotocol/sdk/client/streamableHttp.js"
     );
-    const { McpServer } = await import("@modelcontextprotocol/sdk/server/mcp.js");
+    const { Server } = await import("@modelcontextprotocol/sdk/server/index.js");
     const { StdioServerTransport } = await import("@modelcontextprotocol/sdk/server/stdio.js");
     const { x402MCPClient } = await import("@x402/mcp");
 
@@ -169,62 +168,96 @@ Add to your MCP client config (Claude, Cursor, etc.):
       }
     }
 
-    // Get remote tools to register on the local server
-    const { tools } = await x402Mcp.listTools();
+    // Discover remote capabilities
+    let { tools } = await x402Mcp.listTools();
     dim(`  ${tools.length} tools available`);
 
-    // Create local MCP server (stdio)
-    const localServer = new McpServer({
-      name: "x402-proxy",
-      version: __VERSION__,
-    });
-
-    // Register each remote tool as a local tool that proxies through x402
-    for (const tool of tools) {
-      localServer.tool(
-        tool.name,
-        tool.description ?? "",
-        tool.inputSchema?.properties
-          ? Object.fromEntries(
-              Object.entries(tool.inputSchema.properties as Record<string, unknown>).map(
-                ([k, v]) => [k, v as object],
-              ),
-            )
-          : {},
-        async (args) => {
-          const result = await x402Mcp.callTool(tool.name, args);
-          return {
-            content: result.content as Array<{ type: "text"; text: string }>,
-            isError: result.isError,
-          };
-        },
-      );
+    let remoteResources: Array<{
+      name: string;
+      uri: string;
+      description?: string;
+      mimeType?: string;
+    }> = [];
+    try {
+      const res = await x402Mcp.listResources();
+      remoteResources = res.resources;
+      if (remoteResources.length > 0) dim(`  ${remoteResources.length} resources available`);
+    } catch {
+      dim("  Resources not available from remote");
     }
 
-    // Also proxy resources if available
-    try {
-      const { resources } = await x402Mcp.listResources();
-      if (resources.length > 0) {
-        dim(`  ${resources.length} resources available`);
-        for (const resource of resources) {
-          localServer.resource(
-            resource.name,
-            resource.uri,
-            resource.description ? { description: resource.description } : {},
-            async (uri) => {
-              const result = await x402Mcp.readResource({ uri: uri.href });
-              return {
-                contents: result.contents.map((c) => ({
-                  uri: c.uri,
-                  text: "text" in c ? (c.text as string) : "",
-                })),
-              };
-            },
-          );
-        }
-      }
-    } catch {
-      // Resources not supported by remote, that's fine
+    // Create local server using low-level Server (not McpServer) to proxy
+    // raw JSON Schemas verbatim without Zod conversion
+    const localServer = new Server(
+      { name: "x402-proxy", version: __VERSION__ },
+      {
+        capabilities: {
+          tools: tools.length > 0 ? {} : undefined,
+          resources: remoteResources.length > 0 ? {} : undefined,
+        },
+      },
+    );
+
+    const {
+      ListToolsRequestSchema,
+      CallToolRequestSchema,
+      ListResourcesRequestSchema,
+      ReadResourceRequestSchema,
+      ToolListChangedNotificationSchema,
+      ResourceListChangedNotificationSchema,
+    } = await import("@modelcontextprotocol/sdk/types.js");
+
+    localServer.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        inputSchema: t.inputSchema,
+        annotations: t.annotations,
+      })),
+    }));
+
+    localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const { name, arguments: args } = request.params;
+      const result = await x402Mcp.callTool(name, args ?? {});
+      return {
+        content: result.content as Array<{ type: string; [key: string]: unknown }>,
+        isError: result.isError,
+      };
+    });
+
+    if (remoteResources.length > 0) {
+      localServer.setRequestHandler(ListResourcesRequestSchema, async () => ({
+        resources: remoteResources.map((r) => ({
+          name: r.name,
+          uri: r.uri,
+          description: r.description,
+          mimeType: r.mimeType,
+        })),
+      }));
+
+      localServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+        const result = await x402Mcp.readResource({ uri: request.params.uri });
+        return {
+          contents: result.contents.map((c) => ({ ...c })),
+        };
+      });
+    }
+
+    // Forward remote list-change notifications so local clients stay in sync
+    remoteClient.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+      const updated = await x402Mcp.listTools();
+      tools = updated.tools;
+      dim(`  Tools updated: ${tools.length} available`);
+      await localServer.notification({ method: "notifications/tools/list_changed" });
+    });
+
+    if (remoteResources.length > 0) {
+      remoteClient.setNotificationHandler(ResourceListChangedNotificationSchema, async () => {
+        const updated = await x402Mcp.listResources();
+        remoteResources = updated.resources;
+        dim(`  Resources updated: ${remoteResources.length} available`);
+        await localServer.notification({ method: "notifications/resources/list_changed" });
+      });
     }
 
     // Connect local server to stdio

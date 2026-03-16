@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-16
+
+### Changed
+- MCP proxy graduated from alpha to stable - removed alpha warning and label
+- MCP proxy uses low-level `Server` class instead of `McpServer` to proxy raw JSON schemas verbatim without Zod conversion
+- MCP proxy now forwards blob resource contents (previously only text was proxied)
+- MCP content type widened to pass through all MCP content types (image, audio, resource_link) not just text
+
+### Added
+- MCP proxy forwards `notifications/tools/list_changed` and `notifications/resources/list_changed` from remote servers so local clients stay in sync with dynamic tool/resource updates
+
 ## [0.4.2] - 2026-03-16
 
 ### Fixed
@@ -105,7 +116,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - CLI binary accessible via `npx x402-proxy`
 - `fetch` command (default) - curl-like HTTP client with automatic x402 payment
-- `mcp` command (alpha) - MCP stdio proxy with auto-payment for AI agents
+- `mcp` command - MCP stdio proxy with auto-payment for AI agents
 - `setup` command - interactive onboarding wizard with @clack/prompts
 - `status` command - config, wallet, and spend summary
 - `wallet` subcommand with `info`, `history`, `fund`, `export-key`
@@ -129,7 +140,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.2...v0.4.0
