@@ -70,6 +70,7 @@ pnpm build    # clean + tsdown --publint (via Turbo)
 - [ ] `CHANGELOG.md` updated: new `## [<version>] - YYYY-MM-DD` section with all changes since last release
 - [ ] `CHANGELOG.md` comparison links updated at bottom of file
 - [ ] README.md reflects any command/feature changes
+- [ ] `skills/x402-proxy/SKILL.md` reflects any command/feature/URL changes (symlinked into npm package)
 - [ ] No stale version strings anywhere in source (grep for old version number)
 
 ### Release steps

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-16
+
+### Fixed
+- Twitter endpoint URLs updated from `/user/` to `/users/` to match spec change
+
+### Added
+- CHANGELOG.md included in npm package metadata
+- `skills/` directory with SKILL.md and library reference included in npm package
+
 ## [0.4.1] - 2026-03-13
 
 ### Changed
@@ -120,7 +129,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.2...v0.4.0
 [0.3.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.3.1...v0.3.2
