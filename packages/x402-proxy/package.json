@@ -1,6 +1,6 @@
 {
   "name": "x402-proxy",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base and Solana.",
   "type": "module",
   "sideEffects": false,
@@ -8,10 +8,8 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": {
-        "types": "./dist/index.d.ts",
-        "default": "./dist/index.js"
-      }
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
   },
