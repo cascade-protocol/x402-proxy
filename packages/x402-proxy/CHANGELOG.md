@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-19
+
+### Fixed
+- Solana USDC balance showing 0.0000 instead of actual balance due to `getTokenAccountsByOwner` being rate-limited (429) on public Solana RPC
+- Replaced with offline ATA derivation via `@solana/kit` + lightweight `getTokenAccountBalance` call that works reliably on any public RPC
+- RPC errors now show `?` instead of silently displaying `0.0000`
+
 ## [0.5.0] - 2026-03-16
 
 ### Changed
@@ -140,7 +147,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.0...v0.4.1

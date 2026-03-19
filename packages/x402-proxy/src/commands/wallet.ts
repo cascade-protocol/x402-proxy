@@ -1,3 +1,4 @@
+import { address, getAddressEncoder, getProgramDerivedAddress } from "@solana/kit";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
 import { calcSpend, formatTxLine, readHistory } from "../history.js";
@@ -9,13 +10,13 @@ const BASE_RPC = "https://mainnet.base.org";
 const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_SOLANA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 
 type RpcResult = { result?: string };
-type SolanaTokenResult = {
+type SolanaBalanceResult = {
   result?: {
-    value?: Array<{
-      account: { data: { parsed: { info: { tokenAmount: { uiAmountString: string } } } } };
-    }>;
+    value?: { uiAmountString: string };
   };
 };
 
@@ -40,21 +41,35 @@ export async function fetchEvmBalances(address: string): Promise<{ eth: string; 
   return { eth, usdc };
 }
 
-export async function fetchSolanaBalances(address: string): Promise<{ sol: string; usdc: string }> {
+async function getUsdcAta(owner: string): Promise<string> {
+  const encoder = getAddressEncoder();
+  const [ata] = await getProgramDerivedAddress({
+    programAddress: address(ATA_PROGRAM),
+    seeds: [
+      encoder.encode(address(owner)),
+      encoder.encode(address(TOKEN_PROGRAM)),
+      encoder.encode(address(USDC_SOLANA_MINT)),
+    ],
+  });
+  return ata;
+}
+
+export async function fetchSolanaBalances(
+  ownerAddress: string,
+): Promise<{ sol: string; usdc: string }> {
+  const ata = await getUsdcAta(ownerAddress);
   const [solRes, usdcRes] = (await Promise.all([
-    rpcCall(SOLANA_RPC, "getBalance", [address]),
-    rpcCall(SOLANA_RPC, "getTokenAccountsByOwner", [
-      address,
-      { mint: USDC_SOLANA_MINT },
-      { encoding: "jsonParsed" },
-    ]),
-  ])) as [{ result?: { value?: number } }, SolanaTokenResult];
+    rpcCall(SOLANA_RPC, "getBalance", [ownerAddress]),
+    rpcCall(SOLANA_RPC, "getTokenAccountBalance", [ata]),
+  ])) as [{ result?: { value?: number } }, SolanaBalanceResult];
 
   const sol = solRes.result?.value != null ? (solRes.result.value / 1e9).toFixed(6) : "?";
-  const accounts = usdcRes.result?.value;
-  const usdc = accounts?.length
-    ? Number(accounts[0].account.data.parsed.info.tokenAmount.uiAmountString).toFixed(4)
-    : "0.0000";
+  const usdcVal = usdcRes.result?.value;
+  const usdc = usdcVal
+    ? Number(usdcVal.uiAmountString).toFixed(4)
+    : usdcVal === undefined
+      ? "?"
+      : "0.0000";
   return { sol, usdc };
 }
 
