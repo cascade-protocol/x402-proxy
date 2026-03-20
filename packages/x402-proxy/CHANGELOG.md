@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-20
+
+### Added
+- `--verbose` flag on `fetch` command - debug logging for protocol negotiation, headers, session lifecycle, and payment flow
+- OpenClaw plugin integration (`x402-proxy/openclaw`) - registers `x_balance` tool, `x_payment` tool, `/x_wallet` command, and HTTP route proxy for upstream x402 endpoints
+- `openclaw.plugin.json` manifest with config schema for providers, keypair path, RPC URL, and dashboard URL
+- `./openclaw` subpath export in package.json
+
+### Fixed
+- MPP SSE requests silently losing `Content-Type` and other headers when `Headers` instances are spread (workaround for mppx SDK bug, upstream fix: wevm/mppx#209)
+- MPP session `close()` errors no longer crash the CLI - wrapped in try/catch with verbose error reporting
+- MPP payment history now includes `amount` (converted from base units) and `channelId` in transaction records
+- MPP streaming history records now use `channelId` as fallback for `tx` field when no receipt reference is available
+
 ## [0.6.0] - 2026-03-19
 
 ### Added
@@ -172,7 +186,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.0...v0.5.1

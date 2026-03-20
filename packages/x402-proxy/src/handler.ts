@@ -190,10 +190,15 @@ export async function createMppProxyHandler(opts: {
       if (session?.opened) {
         const receipt = await session.close();
         if (receipt) {
+          // spent is in USDC base units (6 decimals)
+          const spentUsdc = receipt.spent
+            ? (Number(receipt.spent) / 1_000_000).toString()
+            : undefined;
           paymentQueue.push({
             protocol: "mpp",
             network: TEMPO_NETWORK,
             intent: "session",
+            amount: spentUsdc,
             channelId: session.channelId ?? undefined,
             receipt: {
               method: receipt.method,

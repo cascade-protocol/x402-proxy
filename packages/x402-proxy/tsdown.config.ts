@@ -22,4 +22,13 @@ export default defineConfig([
     clean: false,
     treeshake: true,
   },
+  {
+    entry: { "openclaw/plugin": "src/openclaw/plugin.ts" },
+    format: ["esm"],
+    fixedExtension: false,
+    dts: true,
+    clean: false,
+    treeshake: true,
+    define: { __VERSION__: JSON.stringify(version) },
+  },
 ]);

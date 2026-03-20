@@ -1,7 +1,7 @@
 {
   "name": "x402-proxy",
-  "version": "0.6.0",
-  "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo.",
+  "version": "0.7.0",
+  "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo. Also works as an OpenClaw plugin.",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -11,13 +11,22 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./openclaw": {
+      "types": "./dist/openclaw/plugin.d.ts",
+      "default": "./dist/openclaw/plugin.js"
+    },
     "./package.json": "./package.json"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/openclaw/plugin.js"
+    ]
   },
   "bin": {
     "x402-proxy": "./dist/bin/cli.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsdown --publint",
+    "build": "rm -rf dist && tsdown --publint && cp openclaw.plugin.json dist/",
     "dev": "tsdown --watch",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
@@ -33,6 +42,7 @@
     "@scure/bip32": "^2.0.1",
     "@scure/bip39": "^2.0.1",
     "@solana/kit": "^6.0.0",
+    "@sinclair/typebox": "^0.34.48",
     "@stricli/core": "^1.2.6",
     "@x402/evm": "^2.6.0",
     "@x402/fetch": "^2.6.0",
@@ -44,8 +54,17 @@
     "viem": "^2.0.0",
     "yaml": "^2.8.2"
   },
+  "peerDependencies": {
+    "openclaw": ">=2026.3.8"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "openclaw": ">=2026.3.8",
     "publint": "^0.3.17",
     "tsdown": "^0.20.3",
     "typescript": "^5.9.0",
@@ -53,6 +72,7 @@
   },
   "files": [
     "dist/**",
+    "openclaw.plugin.json",
     "README.md",
     "CHANGELOG.md",
     "skills/**",
@@ -71,7 +91,9 @@
     "tempo",
     "usdc",
     "coinbase",
-    "cli"
+    "cli",
+    "openclaw",
+    "openclaw-plugin"
   ],
   "license": "Apache-2.0",
   "engines": {

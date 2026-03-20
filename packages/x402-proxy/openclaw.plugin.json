@@ -1,0 +1,28 @@
+{
+  "id": "x402-proxy",
+  "name": "x402 Proxy",
+  "description": "x402/MPP payments, Solana wallet, and inference proxying",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "providers": {
+        "type": "object",
+        "description": "Provider catalog keyed by name, each with baseUrl and models array"
+      },
+      "keypairPath": {
+        "type": "string",
+        "description": "Optional path to Solana keypair JSON file (overrides x402-proxy wallet resolution)"
+      },
+      "rpcUrl": {
+        "type": "string",
+        "description": "Solana RPC URL"
+      },
+      "dashboardUrl": {
+        "type": "string",
+        "description": "URL to link from /x_wallet dashboard"
+      }
+    },
+    "required": []
+  }
+}

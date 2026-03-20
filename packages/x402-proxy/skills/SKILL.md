@@ -62,6 +62,7 @@ x402-proxy wallet export-key mnemonic   # bare mnemonic to stdout
 --body, -d <DATA>         Request body (string or @file)
 --network <NETWORK>       Force payment chain (base, solana, tempo)
 --protocol <PROTOCOL>    Payment protocol (x402, mpp)
+--verbose                Show debug details (protocol negotiation, headers, payment flow)
 ```
 
 ## MCP proxy for AI agents
@@ -122,7 +123,7 @@ Also supports JSONC and JSON config files. Wallet stored in `wallet.json` (mode 
 
 ```bash
 # Smoke test an endpoint
-npx x402-proxy https://your-service.com/paid-route
+npx x402-proxy --verbose https://your-service.com/paid-route
 
 # Test both chains
 npx x402-proxy --network base https://your-service.com/route
@@ -141,6 +142,17 @@ npx x402-proxy status
 ```
 
 stdout = response body, stderr = payment info. Pipes, redirects, and `jq` all work cleanly.
+
+## OpenClaw Plugin
+
+x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin. Install it to give your OpenClaw gateway automatic x402 payment capabilities:
+
+- `x_balance` tool - check wallet SOL/USDC balances
+- `x_payment` tool - call any x402-enabled endpoint with automatic payment
+- `/x_wallet` command - wallet status, send USDC, transaction history
+- HTTP route proxy (`/x402/*`) - proxies requests to upstream x402 endpoints with payment
+
+Configure in your OpenClaw plugin settings with `providers` (upstream x402 endpoints and models) and optionally `keypairPath` or use the standard `X402_PROXY_WALLET_MNEMONIC` env var.
 
 ## Library API
 

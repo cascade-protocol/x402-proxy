@@ -1,2 +1,8 @@
 packages:
-  - "packages/*"
+  - packages/*
+
+onlyBuiltDependencies:
+  - '@whiskeysockets/baileys'
+  - koffi
+  - protobufjs
+  - sharp

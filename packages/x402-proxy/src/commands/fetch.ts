@@ -8,6 +8,7 @@ import {
   extractTxSignature,
   type MppPaymentInfo,
   type PaymentInfo,
+  TEMPO_NETWORK,
 } from "../handler.js";
 import { appendHistory, displayNetwork, type TxRecord } from "../history.js";
 import { getHistoryPath, isConfigured, loadConfig } from "../lib/config.js";
@@ -23,6 +24,7 @@ type FetchFlags = {
   network: string | undefined;
   protocol: string | undefined;
   json: boolean;
+  verbose: boolean;
 };
 
 export const fetchCommand = buildCommand<FetchFlags, [url?: string], CommandContext>({
@@ -85,6 +87,11 @@ Examples:
         brief: "Force JSON output",
         default: false,
       },
+      verbose: {
+        kind: "boolean",
+        brief: "Show debug details (protocol negotiation, headers, payment flow)",
+        default: false,
+      },
     },
     positional: {
       kind: "tuple",
@@ -98,6 +105,22 @@ Examples:
     },
   },
   async func(flags, url?: string) {
+    const verbose = (msg: string) => {
+      if (flags.verbose) dim(`  [verbose] ${msg}`);
+    };
+
+    const closeMppSession = async (handler: Awaited<ReturnType<typeof createMppProxyHandler>>) => {
+      verbose("closing MPP session...");
+      try {
+        await handler.close();
+        verbose("session closed successfully");
+      } catch (closeErr) {
+        verbose(
+          `session close failed: ${closeErr instanceof Error ? closeErr.message : String(closeErr)}`,
+        );
+      }
+    };
+
     // No URL: show status or onboarding
     if (!url) {
       if (isConfigured()) {
@@ -181,6 +204,8 @@ Examples:
     const config = loadConfig();
     const resolvedProtocol = flags.protocol ?? config?.preferredProtocol;
     const maxDeposit = config?.mppSessionBudget ?? "1";
+    verbose(`wallet source: ${wallet.source}`);
+    verbose(`protocol: ${resolvedProtocol ?? "auto-detect"}, maxDeposit: ${maxDeposit}`);
 
     // Auto-detect preferred network based on balance when not configured
     let preferredNetwork = config?.defaultNetwork;
@@ -206,7 +231,8 @@ Examples:
     }
 
     const method = flags.method || "GET";
-    const init: RequestInit = { method, headers };
+    // Convert Headers to plain object so mppx SSE spread doesn't lose them
+    const init: RequestInit = { method, headers: Object.fromEntries(headers.entries()) };
     if (flags.body) init.body = flags.body;
 
     if (isTTY()) {
@@ -234,23 +260,41 @@ Examples:
 
         // Detect SSE streaming requests - these need session.sse() for mid-stream voucher cycling
         const isStreamingRequest = flags.body != null && /"stream"\s*:\s*true/.test(flags.body);
+        verbose(`mpp handler created, streaming: ${isStreamingRequest}`);
 
         if (isStreamingRequest) {
           try {
+            verbose("opening SSE session...");
             const tokens = await mppHandler.sse(parsedUrl.toString(), init);
+            verbose("SSE stream opened, reading tokens...");
             for await (const token of tokens) {
               process.stdout.write(token);
             }
+            verbose("SSE stream complete");
           } finally {
-            await mppHandler.close();
+            await closeMppSession(mppHandler);
           }
 
-          mppPayment = mppHandler.shiftPayment();
+          // SSE open pushes an intent-only entry; close pushes the actual receipt
+          mppHandler.shiftPayment();
+          const closeReceipt = mppHandler.shiftPayment();
+          verbose(
+            closeReceipt
+              ? `close receipt: amount=${closeReceipt.amount ?? "none"}, channelId=${closeReceipt.channelId ?? "none"}, txHash=${closeReceipt.receipt?.txHash ?? "none"}`
+              : "no close receipt (session close may have failed)",
+          );
+          mppPayment = closeReceipt ?? {
+            protocol: "mpp",
+            network: TEMPO_NETWORK,
+            intent: "session",
+          };
           usedProtocol = "mpp";
 
           const elapsedMs = Date.now() - startMs;
+          const spentAmount = mppPayment.amount ? Number(mppPayment.amount) : undefined;
           if (mppPayment && isTTY()) {
-            info(`  MPP session (${displayNetwork(mppPayment.network)})`);
+            const spentStr = spentAmount != null ? `${spentAmount.toFixed(4)} USDC ` : "";
+            info(`  MPP session: ${spentStr}(${displayNetwork(mppPayment.network)})`);
           }
           if (isTTY()) {
             dim(`  Streamed (${elapsedMs}ms)`);
@@ -263,8 +307,8 @@ Examples:
               kind: "mpp_payment",
               net: mppPayment.network,
               from: wallet.evmAddress ?? "unknown",
-              tx: mppPayment.receipt?.reference,
-              amount: undefined,
+              tx: mppPayment.receipt?.reference ?? mppPayment.channelId,
+              amount: spentAmount,
               token: "USDC",
               ms: elapsedMs,
               label: parsedUrl.hostname,
@@ -277,10 +321,12 @@ Examples:
         }
 
         // Non-streaming MPP request
+        verbose("sending non-streaming MPP request...");
         try {
           response = await mppHandler.fetch(parsedUrl.toString(), init);
+          verbose(`response: ${response.status} ${response.statusText}`);
         } finally {
-          await mppHandler.close();
+          await closeMppSession(mppHandler);
         }
         mppPayment = mppHandler.shiftPayment();
         usedProtocol = "mpp";
@@ -312,15 +358,18 @@ Examples:
         // If x402 couldn't handle it and server advertises MPP, fall through
         if (response.status === 402 && wallet.evmKey) {
           const detected = detectProtocols(response);
+          verbose(`auto-detect: x402=${detected.x402}, mpp=${detected.mpp}`);
           if (detected.mpp) {
+            verbose("falling through to MPP...");
             const mppHandler = await createMppProxyHandler({
               evmKey: wallet.evmKey,
               maxDeposit,
             });
             try {
               response = await mppHandler.fetch(parsedUrl.toString(), init);
+              verbose(`MPP response: ${response.status} ${response.statusText}`);
             } finally {
-              await mppHandler.close();
+              await closeMppSession(mppHandler);
             }
             mppPayment = mppHandler.shiftPayment();
             x402Payment = undefined;
@@ -336,6 +385,11 @@ Examples:
 
     const payment = x402Payment ?? mppPayment;
     const txSig = extractTxSignature(response);
+
+    verbose(`protocol used: ${usedProtocol ?? "none"}`);
+    for (const [k, v] of response.headers) {
+      if (/payment|auth|www|x-pay/i.test(k)) verbose(`header ${k}: ${v.slice(0, 200)}`);
+    }
 
     // Payment failed - check balances and show appropriate message
     if (response.status === 402 && isTTY()) {
@@ -505,6 +559,7 @@ Examples:
         net: mppPayment.network,
         from: wallet.evmAddress ?? "unknown",
         tx: mppPayment.receipt?.reference ?? txSig,
+        amount: mppPayment.amount ? Number(mppPayment.amount) : undefined,
         token: "USDC",
         ms: elapsedMs,
         label: parsedUrl.hostname,

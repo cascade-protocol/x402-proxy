@@ -49,6 +49,9 @@ $ npx x402-proxy --method POST \
 # Force a specific network
 $ npx x402-proxy --network base https://api.example.com/data
 
+# Debug protocol negotiation and payment flow
+$ npx x402-proxy --verbose https://api.example.com/data
+
 # Use MPP protocol for streaming payments
 $ npx x402-proxy --protocol mpp \
   --method POST \
@@ -117,6 +120,12 @@ import {
 ```
 
 See the [library API docs](https://github.com/cascade-protocol/x402-proxy/tree/main/packages/x402-proxy#library-api) for details.
+
+## OpenClaw Plugin
+
+x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin, giving your gateway automatic x402 payment capabilities. Registers `x_balance` and `x_payment` tools, `/x_wallet` command, and an HTTP route proxy for upstream x402 endpoints.
+
+Configure providers and models in OpenClaw plugin settings. Uses the standard wallet resolution (env vars or `wallet.json`).
 
 ## License
 
