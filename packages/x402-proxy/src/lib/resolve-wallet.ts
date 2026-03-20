@@ -116,6 +116,8 @@ export function networkToCaipPrefix(name: string): string {
   switch (name.toLowerCase()) {
     case "base":
       return "eip155:8453";
+    case "tempo":
+      return "eip155:4217";
     case "solana":
       return "solana:";
     default:

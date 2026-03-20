@@ -5,6 +5,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
 export type ProxyConfig = {
   defaultNetwork?: string;
+  preferredProtocol?: "x402" | "mpp";
+  mppSessionBudget?: string;
   spendLimitDaily?: number;
   spendLimitPerTx?: number;
 };

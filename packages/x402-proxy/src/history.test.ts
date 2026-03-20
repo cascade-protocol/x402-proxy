@@ -84,6 +84,23 @@ describe("calcSpend", () => {
     const spend = calcSpend([]);
     expect(spend).toEqual({ today: 0, total: 0, count: 0 });
   });
+
+  it("counts mpp_payment in USDC spend", () => {
+    const mppRecords: TxRecord[] = [
+      {
+        t: Date.now(),
+        ok: true,
+        kind: "mpp_payment",
+        net: "eip155:4217",
+        from: "0x1",
+        amount: 0.05,
+        token: "USDC",
+      },
+    ];
+    const spend = calcSpend(mppRecords);
+    expect(spend.total).toBeCloseTo(0.05);
+    expect(spend.count).toBe(1);
+  });
 });
 
 // --- explorerUrl ---
@@ -95,6 +112,10 @@ describe("explorerUrl", () => {
 
   it("returns solscan URL for Solana network", () => {
     expect(explorerUrl("solana:mainnet", "abc123")).toBe("https://solscan.io/tx/abc123");
+  });
+
+  it("returns Tempo explorer URL for Tempo network", () => {
+    expect(explorerUrl("eip155:4217", "0xabc")).toBe("https://explore.mainnet.tempo.xyz/tx/0xabc");
   });
 });
 
@@ -111,6 +132,10 @@ describe("displayNetwork", () => {
 
   it("returns EVM with chain ID for unknown EVM chains", () => {
     expect(displayNetwork("eip155:1")).toBe("EVM (1)");
+  });
+
+  it("returns Tempo for eip155:4217", () => {
+    expect(displayNetwork("eip155:4217")).toBe("Tempo");
   });
 
   it("returns raw string for unknown networks", () => {
@@ -163,6 +188,21 @@ describe("formatTxLine", () => {
     const failed = { ...record, ok: false };
     const line = formatTxLine(failed);
     expect(line).toContain("\u2717"); // ✗
+  });
+
+  it("formats mpp_payment with tempo network shorthand", () => {
+    const mppRecord: TxRecord = {
+      t: Date.UTC(2026, 2, 12, 14, 30),
+      ok: true,
+      kind: "mpp_payment",
+      net: "eip155:4217",
+      from: "0x1",
+      amount: 0.05,
+      token: "USDC",
+    };
+    const line = formatTxLine(mppRecord);
+    expect(line).toContain("mpp payment");
+    expect(line).toContain("tempo");
   });
 });
 

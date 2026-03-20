@@ -1,4 +1,12 @@
-import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname } from "node:path";
 
 export const HISTORY_MAX_LINES = 1000;
 export const HISTORY_KEEP_LINES = 500;
@@ -8,7 +16,15 @@ export const HISTORY_KEEP_LINES = 500;
 export type TxRecord = {
   t: number;
   ok: boolean;
-  kind: "x402_inference" | "x402_payment" | "transfer" | "buy" | "sell" | "mint" | "swap";
+  kind:
+    | "x402_inference"
+    | "x402_payment"
+    | "mpp_payment"
+    | "transfer"
+    | "buy"
+    | "sell"
+    | "mint"
+    | "swap";
   net: string;
   from: string;
   to?: string;
@@ -33,6 +49,7 @@ export type TxRecord = {
 
 export function appendHistory(historyPath: string, record: TxRecord): void {
   try {
+    mkdirSync(dirname(historyPath), { recursive: true });
     appendFileSync(historyPath, `${JSON.stringify(record)}\n`);
     if (existsSync(historyPath)) {
       const stat = statSync(historyPath);
@@ -106,6 +123,7 @@ function formatAmount(amount: number, token: string): string {
 const KIND_LABELS: Record<TxRecord["kind"], string> = {
   x402_inference: "inference",
   x402_payment: "payment",
+  mpp_payment: "mpp payment",
   transfer: "transfer",
   buy: "buy",
   sell: "sell",
@@ -116,6 +134,7 @@ const KIND_LABELS: Record<TxRecord["kind"], string> = {
 export function explorerUrl(net: string, tx: string): string {
   if (net.startsWith("eip155:")) {
     const chainId = net.split(":")[1];
+    if (chainId === "4217") return `https://explore.mainnet.tempo.xyz/tx/${tx}`;
     if (chainId === "8453") return `https://basescan.org/tx/${tx}`;
     return `https://basescan.org/tx/${tx}`;
   }
@@ -133,6 +152,7 @@ function shortModel(model: string): string {
 
 export function displayNetwork(net: string): string {
   if (net === "eip155:8453") return "Base";
+  if (net === "eip155:4217") return "Tempo";
   if (net.startsWith("eip155:")) return `EVM (${net.split(":")[1]})`;
   if (net.startsWith("solana:")) return "Solana";
   return net;
@@ -140,6 +160,7 @@ export function displayNetwork(net: string): string {
 
 function shortNetwork(net: string): string {
   if (net === "eip155:8453") return "base";
+  if (net === "eip155:4217") return "tempo";
   if (net.startsWith("eip155:")) return `evm:${net.split(":")[1]}`;
   if (net.startsWith("solana:")) return "sol";
   return net;

@@ -4,7 +4,7 @@ import { calcSpend, formatTxLine, readHistory } from "../history.js";
 import { getConfigDirShort, getHistoryPath, loadConfig } from "../lib/config.js";
 import { dim } from "../lib/output.js";
 import { resolveWallet } from "../lib/resolve-wallet.js";
-import { balanceLine, fetchEvmBalances, fetchSolanaBalances } from "./wallet.js";
+import { balanceLine, fetchAllBalances } from "./wallet.js";
 
 export async function displayStatus() {
   const wallet = resolveWallet();
@@ -22,17 +22,15 @@ export async function displayStatus() {
     console.log(pc.yellow("  No wallet configured."));
     console.log(pc.dim(`  Run ${pc.cyan("$ npx x402-proxy setup")} to create one.`));
   } else {
-    const [evmResult, solResult] = await Promise.allSettled([
-      wallet.evmAddress ? fetchEvmBalances(wallet.evmAddress) : Promise.resolve(null),
-      wallet.solanaAddress ? fetchSolanaBalances(wallet.solanaAddress) : Promise.resolve(null),
-    ]);
-
-    const evm = evmResult.status === "fulfilled" ? evmResult.value : null;
-    const sol = solResult.status === "fulfilled" ? solResult.value : null;
+    const { evm, sol, tempo } = await fetchAllBalances(wallet.evmAddress, wallet.solanaAddress);
 
     if (wallet.evmAddress) {
       const bal = evm ? balanceLine(evm.usdc, evm.eth, "ETH") : pc.dim(" (network error)");
       console.log(`  Base:   ${pc.green(wallet.evmAddress)}${bal}`);
+    }
+    if (wallet.evmAddress) {
+      const bal = tempo ? pc.dim(` (${tempo.usdc} USDC)`) : pc.dim(" (network error)");
+      console.log(`  Tempo:  ${pc.green(wallet.evmAddress)}${bal}`);
     }
     if (wallet.solanaAddress) {
       const bal = sol ? balanceLine(sol.usdc, sol.sol, "SOL") : pc.dim(" (network error)");
@@ -74,7 +72,13 @@ export async function displayStatus() {
   console.log();
 
   // Footer
-  if (config?.defaultNetwork) dim(`  Network: ${config.defaultNetwork}`);
+  if (config?.defaultNetwork) dim(`  Network:  ${config.defaultNetwork}`);
+  if (config?.preferredProtocol) {
+    const budget = config.mppSessionBudget ?? "1";
+    dim(
+      `  Protocol: ${config.preferredProtocol}${config.preferredProtocol === "mpp" ? ` (sessions up to ${budget} USDC)` : ""}`,
+    );
+  }
   dim(`  Config:  ${getConfigDirShort()}`);
 }
 

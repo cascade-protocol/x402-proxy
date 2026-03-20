@@ -1,11 +1,11 @@
 ---
 name: x402-proxy
-description: Use x402-proxy CLI for consuming and debugging x402 paid APIs. Use this skill when testing x402 endpoints, configuring MCP payment proxies for AI agents, managing x402 wallets, or scripting paid HTTP requests. Triggers on x402-proxy, npx x402-proxy, x402 endpoint testing, paid API debugging, MCP payment proxy, x402 wallet management, or any mention of auto-paying HTTP 402 responses.
+description: Use x402-proxy CLI for consuming and debugging x402 and MPP paid APIs. Use this skill when testing x402/MPP endpoints, configuring MCP payment proxies for AI agents, managing wallets, or scripting paid HTTP requests. Triggers on x402-proxy, npx x402-proxy, x402 endpoint testing, MPP streaming payments, paid API debugging, MCP payment proxy, wallet management, or any mention of auto-paying HTTP 402 responses.
 ---
 
 # x402-proxy
 
-`curl` for x402 paid APIs. Auto-pays HTTP 402 responses with USDC on Base and Solana.
+`curl` for x402 paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and Tempo (via MPP).
 
 ## Quick start
 
@@ -60,7 +60,8 @@ x402-proxy wallet export-key mnemonic   # bare mnemonic to stdout
 --method, -X <METHOD>     HTTP method (default: GET)
 --header, -H <KEY:VALUE>  Add request header (repeatable)
 --body, -d <DATA>         Request body (string or @file)
---network <base|solana>   Force payment on this chain
+--network <NETWORK>       Force payment chain (base, solana, tempo)
+--protocol <PROTOCOL>    Payment protocol (x402, mpp)
 ```
 
 ## MCP proxy for AI agents
@@ -108,9 +109,11 @@ Lives at `~/.config/x402-proxy/` (or `$XDG_CONFIG_HOME/x402-proxy/`):
 
 ```yaml
 # config.yaml
-defaultNetwork: base    # or "solana"
-spendLimitDaily: 10     # USDC daily cap
-spendLimitPerTx: 1      # USDC per-request cap
+defaultNetwork: base          # or "solana"
+preferredProtocol: x402       # or "mpp" for Tempo/MPP endpoints
+mppSessionBudget: "1"         # max USDC deposit for MPP streaming sessions
+spendLimitDaily: 10           # USDC daily cap
+spendLimitPerTx: 1            # USDC per-request cap
 ```
 
 Also supports JSONC and JSON config files. Wallet stored in `wallet.json` (mode 0600), payments logged to `history.jsonl`.

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-19
+
+### Added
+- MPP (Machine Payments Protocol) support via `mppx` SDK - pay-per-token streaming and charge-per-request on the Tempo network
+- `--protocol` flag for `fetch` and `mcp` commands - choose between `x402` and `mpp` payment protocols
+- MPP streaming: `--protocol mpp` with `"stream": true` in body uses session-based SSE with mid-stream voucher cycling
+- MPP MCP proxy: `--protocol mpp` on `mcp` command wraps tool calls with MPP payments via `mppx/mcp-sdk`
+- Auto-detect fallback: if x402 returns 402 and server advertises MPP via `WWW-Authenticate: Payment`, falls through to MPP automatically
+- Tempo USDC balance shown in `wallet` and `status` commands
+- `preferredProtocol` and `mppSessionBudget` config options
+- `detectProtocols()`, `createMppProxyHandler()`, `TEMPO_NETWORK` exported from library
+- `MppPaymentInfo`, `MppProxyHandler`, `DetectedProtocols` types exported
+
+### Changed
+- `PaymentInfo` type now includes `protocol: "x402"` discriminator
+- `extractTxSignature()` now also extracts references from MPP `Payment-Receipt` headers
+- 402 error display shows Tempo balances and MPP-accepting endpoints
+- `appendHistory` creates parent directory automatically (removed `ensureConfigDir` calls)
+- Balance fetching consolidated into `fetchAllBalances()` helper
+
 ## [0.5.2] - 2026-03-19
 
 ### Fixed
@@ -152,7 +172,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.2...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.4.2...v0.5.0

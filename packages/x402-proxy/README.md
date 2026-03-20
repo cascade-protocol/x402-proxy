@@ -1,6 +1,6 @@
 # x402-proxy
 
-`curl` for [x402](https://www.x402.org/) paid APIs. Auto-pays HTTP 402 responses with USDC on Base and Solana - zero crypto code on the buyer side.
+`curl` for [x402](https://www.x402.org/) paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and Tempo - zero crypto code on the buyer side. Supports both [x402](https://www.x402.org/) and [MPP](https://mpp.dev/) payment protocols.
 
 ## Quick Start
 
@@ -10,7 +10,7 @@ npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi
 
 That's it. The endpoint returns 402, x402-proxy pays and streams the response.
 
-No wallet? It'll walk you through setup automatically. One mnemonic derives both EVM (Base) and Solana keypairs. Fund either chain and go.
+No wallet? It'll walk you through setup automatically. One mnemonic derives both EVM (Base/Tempo) and Solana keypairs. Fund any chain and go.
 
 ## MCP Proxy
 
@@ -48,6 +48,13 @@ $ npx x402-proxy --method POST \
 
 # Force a specific network
 $ npx x402-proxy --network base https://api.example.com/data
+
+# Use MPP protocol for streaming payments
+$ npx x402-proxy --protocol mpp \
+  --method POST \
+  --header "Content-Type: application/json" \
+  --body '{"model":"minimax/minimax-m2.5","stream":true,"messages":[{"role":"user","content":"Hello"}]}' \
+  https://inference.surf.cascade.fyi/v1/chat/completions
 
 # Pipe-safe
 $ npx x402-proxy https://api.example.com/data | jq '.results'
@@ -100,7 +107,9 @@ Resolution order: flags > env vars > mnemonic env > `wallet.json` file.
 ```ts
 import {
   createX402ProxyHandler,
+  createMppProxyHandler,
   extractTxSignature,
+  detectProtocols,
   appendHistory,
   readHistory,
   calcSpend,

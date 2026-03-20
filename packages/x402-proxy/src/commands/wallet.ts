@@ -8,7 +8,9 @@ import { resolveWallet } from "../lib/resolve-wallet.js";
 
 const BASE_RPC = "https://mainnet.base.org";
 const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
+const TEMPO_RPC = "https://rpc.presto.tempo.xyz";
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+const USDC_TEMPO = "0x20C000000000000000000000b9537d11c60E8b50";
 const USDC_SOLANA_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
 const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
@@ -26,6 +28,7 @@ async function rpcCall(url: string, method: string, params: unknown[]): Promise<
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
   });
+  if (!res.ok) throw new Error(`RPC ${method} failed: ${res.status} ${res.statusText}`);
   return res.json();
 }
 
@@ -39,6 +42,16 @@ export async function fetchEvmBalances(address: string): Promise<{ eth: string; 
   const eth = ethRes.result ? (Number(BigInt(ethRes.result)) / 1e18).toFixed(6) : "?";
   const usdc = usdcRes.result ? (Number(BigInt(usdcRes.result)) / 1e6).toFixed(4) : "?";
   return { eth, usdc };
+}
+
+export async function fetchTempoBalances(address: string): Promise<{ usdc: string }> {
+  const usdcData = `0x70a08231${address.slice(2).padStart(64, "0")}`;
+  const res = (await rpcCall(TEMPO_RPC, "eth_call", [
+    { to: USDC_TEMPO, data: usdcData },
+    "latest",
+  ])) as RpcResult;
+  const usdc = res.result ? (Number(BigInt(res.result)) / 1e6).toFixed(4) : "?";
+  return { usdc };
 }
 
 async function getUsdcAta(owner: string): Promise<string> {
@@ -77,6 +90,28 @@ export function balanceLine(usdc: string, native: string, nativeSymbol: string):
   return pc.dim(` (${usdc} USDC, ${native} ${nativeSymbol})`);
 }
 
+export type AllBalances = {
+  evm: { eth: string; usdc: string } | null;
+  sol: { sol: string; usdc: string } | null;
+  tempo: { usdc: string } | null;
+};
+
+export async function fetchAllBalances(
+  evmAddress?: string,
+  solanaAddress?: string,
+): Promise<AllBalances> {
+  const [evmResult, solResult, tempoResult] = await Promise.allSettled([
+    evmAddress ? fetchEvmBalances(evmAddress) : Promise.resolve(null),
+    solanaAddress ? fetchSolanaBalances(solanaAddress) : Promise.resolve(null),
+    evmAddress ? fetchTempoBalances(evmAddress) : Promise.resolve(null),
+  ]);
+  return {
+    evm: evmResult.status === "fulfilled" ? evmResult.value : null,
+    sol: solResult.status === "fulfilled" ? solResult.value : null,
+    tempo: tempoResult.status === "fulfilled" ? tempoResult.value : null,
+  };
+}
+
 export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandContext>({
   docs: {
     brief: "Show wallet addresses and balances",
@@ -109,29 +144,28 @@ export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandC
     console.log();
     console.log(pc.dim(`  Source: ${wallet.source}`));
 
-    const [evmResult, solResult] = await Promise.allSettled([
-      wallet.evmAddress ? fetchEvmBalances(wallet.evmAddress) : Promise.resolve(null),
-      wallet.solanaAddress ? fetchSolanaBalances(wallet.solanaAddress) : Promise.resolve(null),
-    ]);
-
-    const evm = evmResult.status === "fulfilled" ? evmResult.value : null;
-    const sol = solResult.status === "fulfilled" ? solResult.value : null;
+    const { evm, sol, tempo } = await fetchAllBalances(wallet.evmAddress, wallet.solanaAddress);
 
     if (wallet.evmAddress) {
       const bal = evm ? balanceLine(evm.usdc, evm.eth, "ETH") : pc.dim(" (network error)");
       console.log(`  Base:   ${pc.green(wallet.evmAddress)}${bal}`);
+    }
+    if (wallet.evmAddress) {
+      const bal = tempo ? pc.dim(` (${tempo.usdc} USDC)`) : pc.dim(" (network error)");
+      console.log(`  Tempo:  ${pc.green(wallet.evmAddress)}${bal}`);
     }
     if (wallet.solanaAddress) {
       const bal = sol ? balanceLine(sol.usdc, sol.sol, "SOL") : pc.dim(" (network error)");
       console.log(`  Solana: ${pc.green(wallet.solanaAddress)}${bal}`);
     }
 
-    // Funding hint when both USDC balances are zero
+    // Funding hint when all USDC balances are zero
     const evmEmpty = !evm || evm.usdc === "0.0000";
     const solEmpty = !sol || sol.usdc === "0.0000";
-    if (evmEmpty && solEmpty) {
+    const tempoEmpty = !tempo || tempo.usdc === "0.0000";
+    if (evmEmpty && solEmpty && tempoEmpty) {
       console.log();
-      dim("  Send USDC to either address above to start using x402 APIs.");
+      dim("  Send USDC to any address above to start using paid APIs.");
     }
     console.log();
 

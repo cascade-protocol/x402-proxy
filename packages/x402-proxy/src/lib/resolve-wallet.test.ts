@@ -29,7 +29,9 @@ function makeReq(overrides: Partial<PaymentRequirements>): PaymentRequirements {
 
 const baseReq = makeReq({ network: "eip155:8453" });
 const solanaReq = makeReq({ network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" });
+const tempoReq = makeReq({ network: "eip155:4217" });
 const bothReqs = [baseReq, solanaReq];
+const allReqs = [baseReq, solanaReq, tempoReq];
 
 // --- networkToCaipPrefix ---
 
@@ -46,8 +48,13 @@ describe("networkToCaipPrefix", () => {
     expect(networkToCaipPrefix("eip155:1")).toBe("eip155:1");
   });
 
+  it("maps 'tempo' to eip155:4217", () => {
+    expect(networkToCaipPrefix("tempo")).toBe("eip155:4217");
+  });
+
   it("is case-insensitive", () => {
     expect(networkToCaipPrefix("Base")).toBe("eip155:8453");
+    expect(networkToCaipPrefix("Tempo")).toBe("eip155:4217");
     expect(networkToCaipPrefix("SOLANA")).toBe("solana:");
   });
 });
@@ -75,6 +82,16 @@ describe("createNetworkFilter", () => {
     const filter = createNetworkFilter("eip155:8453");
     expect(filter(2, bothReqs)).toEqual([baseReq]);
   });
+
+  it("returns only matching requirements for tempo", () => {
+    const filter = createNetworkFilter("tempo");
+    expect(filter(2, allReqs)).toEqual([tempoReq]);
+  });
+
+  it("throws when tempo is unavailable", () => {
+    const filter = createNetworkFilter("tempo");
+    expect(() => filter(2, [baseReq, solanaReq])).toThrow("Network 'tempo' not accepted");
+  });
 });
 
 // --- createNetworkPreference (soft defaultNetwork) ---
@@ -93,6 +110,16 @@ describe("createNetworkPreference", () => {
   it("selects solana when preferred", () => {
     const selector = createNetworkPreference("solana");
     expect(selector(2, bothReqs)).toEqual(solanaReq);
+  });
+
+  it("selects tempo when preferred", () => {
+    const selector = createNetworkPreference("tempo");
+    expect(selector(2, allReqs)).toEqual(tempoReq);
+  });
+
+  it("falls back when tempo preference unavailable", () => {
+    const selector = createNetworkPreference("tempo");
+    expect(selector(2, [baseReq])).toEqual(baseReq);
   });
 });
 

@@ -1,9 +1,16 @@
 import { buildCommand, type CommandContext } from "@stricli/core";
 import type { PaymentRequired } from "@x402/fetch";
 import pc from "picocolors";
-import { createX402ProxyHandler, extractTxSignature } from "../handler.js";
+import {
+  createMppProxyHandler,
+  createX402ProxyHandler,
+  detectProtocols,
+  extractTxSignature,
+  type MppPaymentInfo,
+  type PaymentInfo,
+} from "../handler.js";
 import { appendHistory, displayNetwork, type TxRecord } from "../history.js";
-import { ensureConfigDir, getHistoryPath, isConfigured, loadConfig } from "../lib/config.js";
+import { getHistoryPath, isConfigured, loadConfig } from "../lib/config.js";
 import { dim, error, info, isTTY } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 
@@ -14,6 +21,7 @@ type FetchFlags = {
   evmKey: string | undefined;
   solanaKey: string | undefined;
   network: string | undefined;
+  protocol: string | undefined;
   json: boolean;
 };
 
@@ -62,7 +70,13 @@ Examples:
       },
       network: {
         kind: "parsed",
-        brief: "Require specific network (base, solana)",
+        brief: "Require specific network (base, solana, tempo)",
+        parse: String,
+        optional: true,
+      },
+      protocol: {
+        kind: "parsed",
+        brief: "Payment protocol (x402, mpp)",
         parse: String,
         optional: true,
       },
@@ -165,31 +179,22 @@ Examples:
     }
 
     const config = loadConfig();
+    const resolvedProtocol = flags.protocol ?? config?.preferredProtocol;
+    const maxDeposit = config?.mppSessionBudget ?? "1";
 
     // Auto-detect preferred network based on balance when not configured
     let preferredNetwork = config?.defaultNetwork;
     if (!preferredNetwork && wallet.evmAddress && wallet.solanaAddress) {
-      const { fetchEvmBalances, fetchSolanaBalances } = await import("./wallet.js");
-      const [evmBal, solBal] = await Promise.allSettled([
-        fetchEvmBalances(wallet.evmAddress),
-        fetchSolanaBalances(wallet.solanaAddress),
-      ]);
-      const evmUsdc = evmBal.status === "fulfilled" ? Number(evmBal.value?.usdc ?? 0) : 0;
-      const solUsdc = solBal.status === "fulfilled" ? Number(solBal.value?.usdc ?? 0) : 0;
+      const { fetchAllBalances } = await import("./wallet.js");
+      const balances = await fetchAllBalances(wallet.evmAddress, wallet.solanaAddress);
+      const evmUsdc = balances.evm ? Number(balances.evm.usdc) : 0;
+      const solUsdc = balances.sol ? Number(balances.sol.usdc) : 0;
       if (evmUsdc > solUsdc) {
         preferredNetwork = "base";
       } else if (solUsdc > evmUsdc) {
         preferredNetwork = "solana";
       }
     }
-
-    const client = await buildX402Client(wallet, {
-      preferredNetwork,
-      network: flags.network,
-      spendLimitDaily: config?.spendLimitDaily,
-      spendLimitPerTx: config?.spendLimitPerTx,
-    });
-    const { x402Fetch, shiftPayment } = createX402ProxyHandler({ client });
 
     // Build request
     const headers = new Headers();
@@ -210,20 +215,133 @@ Examples:
 
     const startMs = Date.now();
     let response: Response;
+    let x402Payment: PaymentInfo | undefined;
+    let mppPayment: MppPaymentInfo | undefined;
+    let usedProtocol: "x402" | "mpp" | undefined;
+
     try {
-      response = await x402Fetch(parsedUrl.toString(), init);
+      if (resolvedProtocol === "mpp") {
+        // Explicit MPP - skip x402 entirely
+        if (!wallet.evmKey) {
+          error("MPP requires an EVM wallet. Configure one with: npx x402-proxy setup");
+          process.exit(1);
+        }
+
+        const mppHandler = await createMppProxyHandler({
+          evmKey: wallet.evmKey,
+          maxDeposit,
+        });
+
+        // Detect SSE streaming requests - these need session.sse() for mid-stream voucher cycling
+        const isStreamingRequest = flags.body != null && /"stream"\s*:\s*true/.test(flags.body);
+
+        if (isStreamingRequest) {
+          try {
+            const tokens = await mppHandler.sse(parsedUrl.toString(), init);
+            for await (const token of tokens) {
+              process.stdout.write(token);
+            }
+          } finally {
+            await mppHandler.close();
+          }
+
+          mppPayment = mppHandler.shiftPayment();
+          usedProtocol = "mpp";
+
+          const elapsedMs = Date.now() - startMs;
+          if (mppPayment && isTTY()) {
+            info(`  MPP session (${displayNetwork(mppPayment.network)})`);
+          }
+          if (isTTY()) {
+            dim(`  Streamed (${elapsedMs}ms)`);
+          }
+
+          if (mppPayment) {
+            const record: TxRecord = {
+              t: Date.now(),
+              ok: true,
+              kind: "mpp_payment",
+              net: mppPayment.network,
+              from: wallet.evmAddress ?? "unknown",
+              tx: mppPayment.receipt?.reference,
+              amount: undefined,
+              token: "USDC",
+              ms: elapsedMs,
+              label: parsedUrl.hostname,
+            };
+            appendHistory(getHistoryPath(), record);
+          }
+
+          if (isTTY()) process.stdout.write("\n");
+          return;
+        }
+
+        // Non-streaming MPP request
+        try {
+          response = await mppHandler.fetch(parsedUrl.toString(), init);
+        } finally {
+          await mppHandler.close();
+        }
+        mppPayment = mppHandler.shiftPayment();
+        usedProtocol = "mpp";
+      } else if (resolvedProtocol === "x402") {
+        // Explicit x402
+        const client = await buildX402Client(wallet, {
+          preferredNetwork,
+          network: flags.network,
+          spendLimitDaily: config?.spendLimitDaily,
+          spendLimitPerTx: config?.spendLimitPerTx,
+        });
+        const handler = createX402ProxyHandler({ client });
+        response = await handler.x402Fetch(parsedUrl.toString(), init);
+        x402Payment = handler.shiftPayment();
+        usedProtocol = "x402";
+      } else {
+        // Auto-detect: try x402 first, fall through to MPP if needed
+        const client = await buildX402Client(wallet, {
+          preferredNetwork,
+          network: flags.network,
+          spendLimitDaily: config?.spendLimitDaily,
+          spendLimitPerTx: config?.spendLimitPerTx,
+        });
+        const handler = createX402ProxyHandler({ client });
+        response = await handler.x402Fetch(parsedUrl.toString(), init);
+        x402Payment = handler.shiftPayment();
+        usedProtocol = "x402";
+
+        // If x402 couldn't handle it and server advertises MPP, fall through
+        if (response.status === 402 && wallet.evmKey) {
+          const detected = detectProtocols(response);
+          if (detected.mpp) {
+            const mppHandler = await createMppProxyHandler({
+              evmKey: wallet.evmKey,
+              maxDeposit,
+            });
+            try {
+              response = await mppHandler.fetch(parsedUrl.toString(), init);
+            } finally {
+              await mppHandler.close();
+            }
+            mppPayment = mppHandler.shiftPayment();
+            x402Payment = undefined;
+            usedProtocol = "mpp";
+          }
+        }
+      }
     } catch (err) {
       error(`Request failed: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
     const elapsedMs = Date.now() - startMs;
 
-    // Check if payment was made
-    const payment = shiftPayment();
+    const payment = x402Payment ?? mppPayment;
     const txSig = extractTxSignature(response);
 
     // Payment failed - check balances and show appropriate message
     if (response.status === 402 && isTTY()) {
+      const detected = detectProtocols(response);
+
+      // Parse x402 challenge details
       const prHeader =
         response.headers.get("PAYMENT-REQUIRED") ?? response.headers.get("X-PAYMENT-REQUIRED");
       let accepts: PaymentRequired["accepts"] = [];
@@ -248,33 +366,22 @@ Examples:
 
       const hasEvm = accepts.some((a) => a.network.startsWith("eip155:"));
       const hasSolana = accepts.some((a) => a.network.startsWith("solana:"));
+      const hasMpp = detected.mpp;
       const hasOther = accepts.some(
         (a) => !a.network.startsWith("eip155:") && !a.network.startsWith("solana:"),
       );
 
       // Check on-chain balances to give actionable feedback
-      const { fetchEvmBalances, fetchSolanaBalances } = await import("./wallet.js");
-      let evmUsdc = 0;
-      let solUsdc = 0;
-      if (hasEvm && wallet.evmAddress) {
-        try {
-          const bal = await fetchEvmBalances(wallet.evmAddress);
-          evmUsdc = Number(bal.usdc);
-        } catch {
-          // Network error - fall through with 0
-        }
-      }
-      if (hasSolana && wallet.solanaAddress) {
-        try {
-          const bal = await fetchSolanaBalances(wallet.solanaAddress);
-          solUsdc = Number(bal.usdc);
-        } catch {
-          // Network error - fall through with 0
-        }
-      }
+      const { fetchAllBalances } = await import("./wallet.js");
+      const balances = await fetchAllBalances(wallet.evmAddress, wallet.solanaAddress);
+      const evmUsdc = hasEvm && balances.evm ? Number(balances.evm.usdc) : 0;
+      const solUsdc = hasSolana && balances.sol ? Number(balances.sol.usdc) : 0;
+      const tempoUsdc = hasMpp && balances.tempo ? Number(balances.tempo.usdc) : 0;
 
       const hasSufficientBalance =
-        (hasEvm && evmUsdc >= costNum) || (hasSolana && solUsdc >= costNum);
+        (hasEvm && evmUsdc >= costNum) ||
+        (hasSolana && solUsdc >= costNum) ||
+        (hasMpp && tempoUsdc >= costNum);
 
       if (hasSufficientBalance) {
         // Balance is sufficient but payment failed - read server error
@@ -304,6 +411,11 @@ Examples:
             `    Base:   ${pc.cyan(wallet.evmAddress)} ${pc.dim(`(${evmUsdc.toFixed(4)} USDC)`)}`,
           );
         }
+        if (hasMpp && wallet.evmAddress && tempoUsdc > 0) {
+          console.error(
+            `    Tempo:  ${pc.cyan(wallet.evmAddress)} ${pc.dim(`(${tempoUsdc.toFixed(4)} USDC)`)}`,
+          );
+        }
         if (hasSolana && wallet.solanaAddress && solUsdc > 0) {
           console.error(
             `    Solana: ${pc.cyan(wallet.solanaAddress)} ${pc.dim(`(${solUsdc.toFixed(4)} USDC)`)}`,
@@ -316,12 +428,16 @@ Examples:
         // Insufficient balance
         error(`Payment required: ${costStr} USDC`);
 
-        if (hasEvm || hasSolana) {
+        if (hasEvm || hasSolana || hasMpp) {
           console.error();
           dim("  Fund your wallet with USDC:");
           if (hasEvm && wallet.evmAddress) {
             const balHint = evmUsdc > 0 ? pc.dim(` (${evmUsdc.toFixed(4)} USDC)`) : "";
             console.error(`    Base:   ${pc.cyan(wallet.evmAddress)}${balHint}`);
+          }
+          if (hasMpp && wallet.evmAddress) {
+            const balHint = tempoUsdc > 0 ? pc.dim(` (${tempoUsdc.toFixed(4)} USDC)`) : "";
+            console.error(`    Tempo:  ${pc.cyan(wallet.evmAddress)}${balHint}`);
           }
           if (hasSolana && wallet.solanaAddress) {
             const balHint = solUsdc > 0 ? pc.dim(` (${solUsdc.toFixed(4)} USDC)`) : "";
@@ -329,6 +445,9 @@ Examples:
           }
           if (hasEvm && !wallet.evmAddress) {
             dim("    Base:   endpoint accepts EVM but no EVM wallet configured");
+          }
+          if (hasMpp && !wallet.evmAddress) {
+            dim("    Tempo:  endpoint accepts MPP but no EVM wallet configured");
           }
           if (hasSolana && !wallet.solanaAddress) {
             dim("    Solana: endpoint accepts Solana but no Solana wallet configured");
@@ -348,9 +467,13 @@ Examples:
     }
 
     if (payment && isTTY()) {
-      info(
-        `  Payment: ${payment.amount ? (Number(payment.amount) / 1_000_000).toFixed(4) : "?"} USDC (${displayNetwork(payment.network ?? "unknown")})`,
-      );
+      if (usedProtocol === "mpp" && mppPayment) {
+        info(`  Payment: MPP (${displayNetwork(mppPayment.network)})`);
+      } else if (x402Payment) {
+        info(
+          `  Payment: ${x402Payment.amount ? (Number(x402Payment.amount) / 1_000_000).toFixed(4) : "?"} USDC (${displayNetwork(x402Payment.network ?? "unknown")})`,
+        );
+      }
       if (txSig) dim(`  Tx: ${txSig}`);
     }
 
@@ -359,17 +482,29 @@ Examples:
     }
 
     // Record payment in history
-    if (payment) {
-      ensureConfigDir();
+    if (x402Payment) {
       const record: TxRecord = {
         t: Date.now(),
         ok: response.ok,
         kind: "x402_payment",
-        net: payment.network ?? "unknown",
+        net: x402Payment.network ?? "unknown",
         from: wallet.evmAddress ?? wallet.solanaAddress ?? "unknown",
-        to: payment.payTo,
+        to: x402Payment.payTo,
         tx: txSig,
-        amount: payment.amount ? Number(payment.amount) / 1_000_000 : undefined,
+        amount: x402Payment.amount ? Number(x402Payment.amount) / 1_000_000 : undefined,
+        token: "USDC",
+        ms: elapsedMs,
+        label: parsedUrl.hostname,
+      };
+      appendHistory(getHistoryPath(), record);
+    } else if (mppPayment) {
+      const record: TxRecord = {
+        t: Date.now(),
+        ok: response.ok,
+        kind: "mpp_payment",
+        net: mppPayment.network,
+        from: wallet.evmAddress ?? "unknown",
+        tx: mppPayment.receipt?.reference ?? txSig,
         token: "USDC",
         ms: elapsedMs,
         label: parsedUrl.hostname,
