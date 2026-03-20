@@ -391,6 +391,15 @@ Examples:
       if (/payment|auth|www|x-pay/i.test(k)) verbose(`header ${k}: ${v.slice(0, 200)}`);
     }
 
+    // Non-402 error: tell user whether payment was attempted
+    if (!response.ok && response.status !== 402 && isTTY()) {
+      if (!payment) {
+        dim("  Server returned error before payment was attempted.");
+      } else {
+        dim("  Payment was processed but server returned an error.");
+      }
+    }
+
     // Payment failed - check balances and show appropriate message
     if (response.status === 402 && isTTY()) {
       const detected = detectProtocols(response);

@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-03-20
+
+### Fixed
+- Non-402 server errors (500, 503, etc.) now indicate whether payment was attempted, helping users distinguish "server down" from "payment failed"
+
 ## [0.7.0] - 2026-03-20
 
 ### Added
@@ -186,7 +191,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.2...v0.6.0
 [0.5.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.1...v0.5.2
