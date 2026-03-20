@@ -5,7 +5,7 @@ description: Use x402-proxy CLI for consuming and debugging x402 and MPP paid AP
 
 # x402-proxy
 
-`curl` for x402 paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and Tempo (via MPP).
+`curl` for x402 and MPP paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and [Tempo](https://tempo.xyz/). Supports one-time payments (x402, MPP charge) and pay-per-token streaming (MPP sessions).
 
 ## Quick start
 

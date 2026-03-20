@@ -1,6 +1,6 @@
 # x402-proxy
 
-`curl` for [x402](https://www.x402.org/) paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and Tempo - zero crypto code on the buyer side. Supports both [x402](https://www.x402.org/) and [MPP](https://mpp.dev/) payment protocols.
+`curl` for [x402](https://www.x402.org/) and [MPP](https://mpp.dev/) paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and [Tempo](https://tempo.xyz/) - zero crypto code on the buyer side. Supports one-time payments (x402, MPP charge) and pay-per-token streaming (MPP sessions).
 
 ## Quick Start
 
@@ -30,7 +30,7 @@ Let your AI agent consume any paid MCP server. Configure in Claude, Cursor, or a
 }
 ```
 
-The proxy sits between your agent and the remote server, intercepting 402 responses, paying automatically, and forwarding the result. Your agent never touches crypto.
+The proxy sits between your agent and the remote server, intercepting 402 responses, paying automatically, and forwarding the result. Supports both x402 and MPP protocols. Your agent never touches crypto.
 
 ## HTTP Requests
 
