@@ -1,6 +1,6 @@
 import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
-import { calcSpend, formatTxLine, readHistory } from "../history.js";
+import { calcSpend, formatAmount, formatTxLine, readHistory } from "../history.js";
 import { getHistoryPath } from "../lib/config.js";
 import { info } from "../lib/output.js";
 
@@ -61,7 +61,7 @@ export const walletHistoryCommand = buildCommand<
     console.log();
     console.log(
       pc.dim(
-        `  Today: ${spend.today.toFixed(4)} USDC | Total: ${spend.total.toFixed(4)} USDC | ${spend.count} transactions`,
+        `  Today: ${formatAmount(spend.today, "USDC")} | Total: ${formatAmount(spend.total, "USDC")} | ${spend.count} transactions`,
       ),
     );
     console.log();

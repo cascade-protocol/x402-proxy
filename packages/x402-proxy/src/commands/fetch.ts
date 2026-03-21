@@ -10,7 +10,13 @@ import {
   type PaymentInfo,
   TEMPO_NETWORK,
 } from "../handler.js";
-import { appendHistory, displayNetwork, type TxRecord } from "../history.js";
+import {
+  appendHistory,
+  displayNetwork,
+  formatAmount,
+  formatUsdcValue,
+  type TxRecord,
+} from "../history.js";
 import { getHistoryPath, isConfigured, loadConfig } from "../lib/config.js";
 import { dim, error, info, isTTY } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
@@ -293,7 +299,7 @@ Examples:
           const elapsedMs = Date.now() - startMs;
           const spentAmount = mppPayment.amount ? Number(mppPayment.amount) : undefined;
           if (mppPayment && isTTY()) {
-            const spentStr = spentAmount != null ? `${spentAmount.toFixed(4)} USDC ` : "";
+            const spentStr = spentAmount != null ? `${formatAmount(spentAmount, "USDC")} ` : "";
             info(`  MPP session: ${spentStr}(${displayNetwork(mppPayment.network)})`);
           }
           if (isTTY()) {
@@ -424,7 +430,7 @@ Examples:
           Number(a.amount) < Number(min.amount) ? a : min,
         );
         costNum = Number(cheapest.amount) / 1_000_000;
-        costStr = costNum.toFixed(4);
+        costStr = formatUsdcValue(costNum);
       }
 
       const hasEvm = accepts.some((a) => a.network.startsWith("eip155:"));
@@ -471,17 +477,17 @@ Examples:
         }
         if (hasEvm && wallet.evmAddress && evmUsdc > 0) {
           console.error(
-            `    Base:   ${pc.cyan(wallet.evmAddress)} ${pc.dim(`(${evmUsdc.toFixed(4)} USDC)`)}`,
+            `    Base:   ${pc.cyan(wallet.evmAddress)} ${pc.dim(`(${formatAmount(evmUsdc, "USDC")})`)}`,
           );
         }
         if (hasMpp && wallet.evmAddress && tempoUsdc > 0) {
           console.error(
-            `    Tempo:  ${pc.cyan(wallet.evmAddress)} ${pc.dim(`(${tempoUsdc.toFixed(4)} USDC)`)}`,
+            `    Tempo:  ${pc.cyan(wallet.evmAddress)} ${pc.dim(`(${formatAmount(tempoUsdc, "USDC")})`)}`,
           );
         }
         if (hasSolana && wallet.solanaAddress && solUsdc > 0) {
           console.error(
-            `    Solana: ${pc.cyan(wallet.solanaAddress)} ${pc.dim(`(${solUsdc.toFixed(4)} USDC)`)}`,
+            `    Solana: ${pc.cyan(wallet.solanaAddress)} ${pc.dim(`(${formatAmount(solUsdc, "USDC")})`)}`,
           );
         }
         console.error();
@@ -495,15 +501,15 @@ Examples:
           console.error();
           dim("  Fund your wallet with USDC:");
           if (hasEvm && wallet.evmAddress) {
-            const balHint = evmUsdc > 0 ? pc.dim(` (${evmUsdc.toFixed(4)} USDC)`) : "";
+            const balHint = evmUsdc > 0 ? pc.dim(` (${formatAmount(evmUsdc, "USDC")})`) : "";
             console.error(`    Base:   ${pc.cyan(wallet.evmAddress)}${balHint}`);
           }
           if (hasMpp && wallet.evmAddress) {
-            const balHint = tempoUsdc > 0 ? pc.dim(` (${tempoUsdc.toFixed(4)} USDC)`) : "";
+            const balHint = tempoUsdc > 0 ? pc.dim(` (${formatAmount(tempoUsdc, "USDC")})`) : "";
             console.error(`    Tempo:  ${pc.cyan(wallet.evmAddress)}${balHint}`);
           }
           if (hasSolana && wallet.solanaAddress) {
-            const balHint = solUsdc > 0 ? pc.dim(` (${solUsdc.toFixed(4)} USDC)`) : "";
+            const balHint = solUsdc > 0 ? pc.dim(` (${formatAmount(solUsdc, "USDC")})`) : "";
             console.error(`    Solana: ${pc.cyan(wallet.solanaAddress)}${balHint}`);
           }
           if (hasEvm && !wallet.evmAddress) {
@@ -531,11 +537,15 @@ Examples:
 
     if (payment && isTTY()) {
       if (usedProtocol === "mpp" && mppPayment) {
-        info(`  Payment: MPP (${displayNetwork(mppPayment.network)})`);
+        const mppAmount = mppPayment.amount
+          ? ` ${formatAmount(Number(mppPayment.amount), "USDC")}`
+          : "";
+        info(`  Payment:${mppAmount} MPP (${displayNetwork(mppPayment.network)})`);
       } else if (x402Payment) {
-        info(
-          `  Payment: ${x402Payment.amount ? (Number(x402Payment.amount) / 1_000_000).toFixed(4) : "?"} USDC (${displayNetwork(x402Payment.network ?? "unknown")})`,
-        );
+        const x402Amount = x402Payment.amount
+          ? formatAmount(Number(x402Payment.amount) / 1_000_000, "USDC")
+          : "? USDC";
+        info(`  Payment: ${x402Amount} (${displayNetwork(x402Payment.network ?? "unknown")})`);
       }
       if (txSig) dim(`  Tx: ${txSig}`);
     }

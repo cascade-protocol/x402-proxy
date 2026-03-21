@@ -143,10 +143,18 @@ export async function createMppProxyHandler(opts: {
   const account = privateKeyToAccount(opts.evmKey as `0x${string}`);
   const maxDeposit = opts.maxDeposit ?? "1";
   const paymentQueue: MppPaymentInfo[] = [];
+  let lastChallengeAmount: string | undefined;
 
   const mppx = Mppx.create({
     methods: [tempo({ account, maxDeposit })],
     polyfill: false,
+    onChallenge: async (challenge) => {
+      const req = challenge.request as { amount?: string; decimals?: number };
+      if (req.amount) {
+        lastChallengeAmount = (Number(req.amount) / 10 ** (req.decimals ?? 6)).toString();
+      }
+      return undefined;
+    },
   });
 
   // Lazy session creation - only needed for SSE streaming
@@ -166,11 +174,17 @@ export async function createMppProxyHandler(opts: {
           paymentQueue.push({
             protocol: "mpp",
             network: TEMPO_NETWORK,
+            amount: lastChallengeAmount,
             receipt,
           });
         } catch {
-          paymentQueue.push({ protocol: "mpp", network: TEMPO_NETWORK });
+          paymentQueue.push({
+            protocol: "mpp",
+            network: TEMPO_NETWORK,
+            amount: lastChallengeAmount,
+          });
         }
+        lastChallengeAmount = undefined;
       }
 
       return response;

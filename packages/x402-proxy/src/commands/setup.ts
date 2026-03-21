@@ -5,6 +5,7 @@ import {
   getConfigDirShort,
   getWalletPath,
   isConfigured,
+  type ProxyConfig,
   saveConfig,
   saveWalletFile,
   type WalletFile,
@@ -72,7 +73,46 @@ export async function runSetup(opts?: { force?: boolean }) {
   };
 
   saveWalletFile(wallet);
-  saveConfig({});
+
+  // Payment preferences
+  const protocol = await prompts.select({
+    message: "Preferred payment protocol?",
+    options: [
+      { value: "x402", label: "x402 - on-chain payments (Base, Solana)" },
+      { value: "mpp", label: "MPP - streaming micropayments (Tempo)" },
+    ],
+  });
+  if (prompts.isCancel(protocol)) {
+    prompts.cancel("Setup cancelled.");
+    process.exit(0);
+  }
+
+  const networkOptions =
+    protocol === "mpp"
+      ? [{ value: "tempo", label: "Tempo" }]
+      : [
+          { value: "auto", label: "Auto-detect (pick chain with highest balance)" },
+          { value: "base", label: "Base (EVM)" },
+          { value: "solana", label: "Solana" },
+        ];
+
+  const network = await prompts.select({
+    message: "Preferred network?",
+    options: networkOptions,
+  });
+  if (prompts.isCancel(network)) {
+    prompts.cancel("Setup cancelled.");
+    process.exit(0);
+  }
+
+  const config: ProxyConfig = {
+    preferredProtocol: protocol as "x402" | "mpp",
+  };
+  if (network !== "auto") {
+    config.defaultNetwork = network as string;
+  }
+
+  saveConfig(config);
 
   prompts.log.info(`Config directory: ${pc.dim(getConfigDirShort())}`);
 

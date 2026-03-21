@@ -1,6 +1,6 @@
 import { buildCommand } from "@stricli/core";
 import pc from "picocolors";
-import { calcSpend, formatTxLine, readHistory } from "../history.js";
+import { calcSpend, formatAmount, formatTxLine, formatUsdcValue, readHistory } from "../history.js";
 import { getConfigDirShort, getHistoryPath, loadConfig } from "../lib/config.js";
 import { dim } from "../lib/output.js";
 import { resolveWallet } from "../lib/resolve-wallet.js";
@@ -44,7 +44,7 @@ export async function displayStatus() {
         const pct =
           config.spendLimitDaily > 0 ? Math.round((spend.today / config.spendLimitDaily) * 100) : 0;
         dim(
-          `  Daily limit:    ${spend.today.toFixed(4)} / ${config.spendLimitDaily} USDC (${pct}%)`,
+          `  Daily limit:    ${formatUsdcValue(spend.today)} / ${config.spendLimitDaily} USDC (${pct}%)`,
         );
       }
       if (config.spendLimitPerTx) {
@@ -64,7 +64,7 @@ export async function displayStatus() {
     }
     console.log();
     dim(
-      `  Today: ${spend.today.toFixed(4)} USDC | Total: ${spend.total.toFixed(4)} USDC | ${spend.count} tx`,
+      `  Today: ${formatAmount(spend.today, "USDC")} | Total: ${formatAmount(spend.total, "USDC")} | ${spend.count} tx`,
     );
   } else {
     dim("  No payment history yet.");

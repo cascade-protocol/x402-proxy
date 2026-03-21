@@ -1,7 +1,7 @@
 import { Type } from "@sinclair/typebox";
 import type { KeyPairSigner } from "@solana/kit";
 import { extractTxSignature, type PaymentInfo, type X402ProxyHandler } from "../handler.js";
-import { appendHistory, calcSpend, readHistory } from "../history.js";
+import { appendHistory, calcSpend, formatAmount, readHistory } from "../history.js";
 import { getSolBalance, getTokenAccounts, getUsdcBalance } from "./solana.js";
 
 export const SOL_MAINNET = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
@@ -77,8 +77,8 @@ export function createBalanceTool(ctx: ToolContext) {
             `USDC: ${snap.ui} USDC`,
             `Available for tools: ${available.toFixed(2)} USDC`,
             `Reserved for inference: ${INFERENCE_RESERVE.toFixed(2)} USDC`,
-            `Spent today: ${snap.spend.today.toFixed(4)} USDC`,
-            `Total spent: ${snap.spend.total.toFixed(4)} USDC (${snap.spend.count} txs)`,
+            `Spent today: ${formatAmount(snap.spend.today, "USDC")}`,
+            `Total spent: ${formatAmount(snap.spend.total, "USDC")} (${snap.spend.count} txs)`,
             ...(tokenLines.length > 0 ? [`Tokens held: ${tokenLines.join(", ")}`] : []),
           ].join("\n"),
         );

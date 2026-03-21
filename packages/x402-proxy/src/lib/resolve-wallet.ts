@@ -7,7 +7,7 @@ import { registerExactSvmScheme } from "@x402/svm/exact/client";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
-import { calcSpend, displayNetwork, readHistory } from "../history.js";
+import { calcSpend, displayNetwork, formatUsdcValue, readHistory } from "../history.js";
 import { getHistoryPath, loadWalletFile } from "./config.js";
 import { deriveEvmKeypair, deriveSolanaKeypair } from "./derive.js";
 
@@ -191,13 +191,15 @@ export async function buildX402Client(
       if (daily) {
         const spend = calcSpend(readHistory(getHistoryPath()));
         if (spend.today >= daily) {
-          throw new Error(`Daily spend limit reached (${spend.today.toFixed(4)}/${daily} USDC)`);
+          throw new Error(
+            `Daily spend limit reached (${formatUsdcValue(spend.today)}/${daily} USDC)`,
+          );
         }
         const remaining = daily - spend.today;
         reqs = reqs.filter((r) => Number(r.amount) / 1_000_000 <= remaining);
         if (reqs.length === 0) {
           throw new Error(
-            `Daily spend limit of ${daily} USDC would be exceeded (${spend.today.toFixed(4)} spent today)`,
+            `Daily spend limit of ${daily} USDC would be exceeded (${formatUsdcValue(spend.today)} spent today)`,
           );
         }
       }

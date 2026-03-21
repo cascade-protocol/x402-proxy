@@ -70,6 +70,9 @@ $ npx x402-proxy <url>                    # paid HTTP request (default command)
 $ npx x402-proxy mcp <url>                # MCP stdio proxy for agents
 $ npx x402-proxy setup                    # onboarding wizard
 $ npx x402-proxy status                   # config + wallet + spend summary
+$ npx x402-proxy config                   # show current configuration
+$ npx x402-proxy config set <key> <value> # set a config value
+$ npx x402-proxy config unset <key>       # remove a config value
 $ npx x402-proxy wallet                   # show addresses and balances
 $ npx x402-proxy wallet history           # payment history
 $ npx x402-proxy wallet export-key <target> # bare key/mnemonic to stdout (evm|solana|mnemonic)

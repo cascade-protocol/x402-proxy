@@ -109,13 +109,16 @@ export function calcSpend(records: TxRecord[]): {
 
 // --- Formatting ---
 
-function formatAmount(amount: number, token: string): string {
-  if (token === "USDC") {
-    if (amount >= 0.01) return `${amount.toFixed(2)} USDC`;
-    if (amount >= 0.001) return `${amount.toFixed(3)} USDC`;
-    if (amount >= 0.0001) return `${amount.toFixed(4)} USDC`;
-    return `${amount.toFixed(6)} USDC`;
-  }
+/** Format a USDC value with adaptive precision (no token suffix). */
+export function formatUsdcValue(amount: number): string {
+  if (amount >= 0.01) return amount.toFixed(2);
+  if (amount >= 0.001) return amount.toFixed(3);
+  if (amount >= 0.0001) return amount.toFixed(4);
+  return amount.toFixed(6);
+}
+
+export function formatAmount(amount: number, token: string): string {
+  if (token === "USDC") return `${formatUsdcValue(amount)} USDC`;
   if (token === "SOL") return `${amount} SOL`;
   return `${amount} ${token}`;
 }

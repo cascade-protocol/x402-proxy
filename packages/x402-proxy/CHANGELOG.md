@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-21
+
+### Added
+- `config` command with `show`, `set`, and `unset` subcommands for managing configuration from the CLI (no more manual YAML editing)
+- Setup wizard now asks about preferred payment protocol (x402/MPP) and network
+- MCP proxy handles `McpError(-32042)` from dual-protocol servers that throw instead of using `isError`, automatically retrying with x402 payment
+- MPP payment amounts captured from challenges and displayed in payment logs, MCP proxy output, and transaction history
+- `formatAmount()` and `formatUsdcValue()` exported from library for adaptive USDC precision formatting
+
+### Changed
+- USDC amounts displayed with adaptive precision (2-6 decimals based on magnitude) instead of fixed 4 decimals everywhere
+- Zero-balance detection uses numeric comparison instead of string matching
+
 ## [0.7.1] - 2026-03-20
 
 ### Fixed
@@ -191,7 +204,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.5.2...v0.6.0

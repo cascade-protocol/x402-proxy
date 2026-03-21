@@ -45,6 +45,9 @@ x402-proxy mcp <url>                    # MCP stdio proxy for AI agents
 x402-proxy setup                        # wallet onboarding wizard
 x402-proxy setup --force                # re-run setup (overwrite existing wallet)
 x402-proxy status                       # config + wallet + daily spend summary
+x402-proxy config                       # show current configuration
+x402-proxy config set <key> <value>     # set a config value
+x402-proxy config unset <key>           # remove a config value
 x402-proxy wallet                       # show addresses and USDC balances
 x402-proxy wallet history               # payment log
 x402-proxy wallet history --limit 5     # last 5 payments

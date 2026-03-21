@@ -1,7 +1,7 @@
 import { address, getAddressEncoder, getProgramDerivedAddress } from "@solana/kit";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
-import { calcSpend, formatTxLine, readHistory } from "../history.js";
+import { calcSpend, formatAmount, formatTxLine, formatUsdcValue, readHistory } from "../history.js";
 import { getHistoryPath } from "../lib/config.js";
 import { dim, info } from "../lib/output.js";
 import { resolveWallet } from "../lib/resolve-wallet.js";
@@ -40,7 +40,7 @@ export async function fetchEvmBalances(address: string): Promise<{ eth: string; 
   ])) as [RpcResult, RpcResult];
 
   const eth = ethRes.result ? (Number(BigInt(ethRes.result)) / 1e18).toFixed(6) : "?";
-  const usdc = usdcRes.result ? (Number(BigInt(usdcRes.result)) / 1e6).toFixed(4) : "?";
+  const usdc = usdcRes.result ? formatUsdcValue(Number(BigInt(usdcRes.result)) / 1e6) : "?";
   return { eth, usdc };
 }
 
@@ -50,7 +50,7 @@ export async function fetchTempoBalances(address: string): Promise<{ usdc: strin
     { to: USDC_TEMPO, data: usdcData },
     "latest",
   ])) as RpcResult;
-  const usdc = res.result ? (Number(BigInt(res.result)) / 1e6).toFixed(4) : "?";
+  const usdc = res.result ? formatUsdcValue(Number(BigInt(res.result)) / 1e6) : "?";
   return { usdc };
 }
 
@@ -79,10 +79,10 @@ export async function fetchSolanaBalances(
   const sol = solRes.result?.value != null ? (solRes.result.value / 1e9).toFixed(6) : "?";
   const usdcVal = usdcRes.result?.value;
   const usdc = usdcVal
-    ? Number(usdcVal.uiAmountString).toFixed(4)
+    ? formatUsdcValue(Number(usdcVal.uiAmountString))
     : usdcVal === undefined
       ? "?"
-      : "0.0000";
+      : "0";
   return { sol, usdc };
 }
 
@@ -160,9 +160,9 @@ export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandC
     }
 
     // Funding hint when all USDC balances are zero
-    const evmEmpty = !evm || evm.usdc === "0.0000";
-    const solEmpty = !sol || sol.usdc === "0.0000";
-    const tempoEmpty = !tempo || tempo.usdc === "0.0000";
+    const evmEmpty = !evm || Number(evm.usdc) === 0;
+    const solEmpty = !sol || Number(sol.usdc) === 0;
+    const tempoEmpty = !tempo || Number(tempo.usdc) === 0;
     if (evmEmpty && solEmpty && tempoEmpty) {
       console.log();
       dim("  Send USDC to any address above to start using paid APIs.");
@@ -185,7 +185,7 @@ export const walletInfoCommand = buildCommand<{ verbose: boolean }, [], CommandC
       console.log();
       console.log(
         pc.dim(
-          `  Today: ${spend.today.toFixed(4)} USDC | Total: ${spend.total.toFixed(4)} USDC | ${spend.count} tx`,
+          `  Today: ${formatAmount(spend.today, "USDC")} | Total: ${formatAmount(spend.total, "USDC")} | ${spend.count} tx`,
         ),
       );
     } else {

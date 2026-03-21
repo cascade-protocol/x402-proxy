@@ -1,6 +1,7 @@
 declare const __VERSION__: string;
 
 import { buildApplication, buildRouteMap } from "@stricli/core";
+import { configSetCommand, configShowCommand, configUnsetCommand } from "./commands/config.js";
 import { fetchCommand } from "./commands/fetch.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { setupCommand } from "./commands/setup.js";
@@ -21,11 +22,24 @@ const walletRoutes = buildRouteMap({
   },
 });
 
+const configRoutes = buildRouteMap({
+  routes: {
+    show: configShowCommand,
+    set: configSetCommand,
+    unset: configUnsetCommand,
+  },
+  defaultCommand: "show",
+  docs: {
+    brief: "Manage configuration",
+  },
+});
+
 const routes = buildRouteMap({
   routes: {
     fetch: fetchCommand,
     mcp: mcpCommand,
     wallet: walletRoutes,
+    config: configRoutes,
     setup: setupCommand,
     status: statusCommand,
   },

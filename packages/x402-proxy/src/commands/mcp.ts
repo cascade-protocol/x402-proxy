@@ -2,7 +2,7 @@ declare const __VERSION__: string;
 
 import { buildCommand, type CommandContext } from "@stricli/core";
 import { TEMPO_NETWORK } from "../handler.js";
-import { appendHistory, displayNetwork, type TxRecord } from "../history.js";
+import { appendHistory, displayNetwork, formatAmount, type TxRecord } from "../history.js";
 import { getHistoryPath, loadConfig } from "../lib/config.js";
 import { dim, error, warn } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
@@ -98,6 +98,7 @@ Add to your MCP client config (Claude, Cursor, etc.):
       ReadResourceRequestSchema,
       ToolListChangedNotificationSchema,
       ResourceListChangedNotificationSchema,
+      McpError,
     } = await import("@modelcontextprotocol/sdk/types.js");
 
     async function connectTransport(target: { connect(t: unknown): Promise<void> }) {
@@ -151,6 +152,19 @@ Add to your MCP client config (Claude, Cursor, etc.):
 
       const { x402MCPClient } = await import("@x402/mcp");
 
+      function warnPayment(
+        accepts: Array<{ amount?: string; network: string }> | undefined,
+        toolName: string,
+      ) {
+        const accept = accepts?.[0];
+        if (accept) {
+          const amount = accept.amount
+            ? formatAmount(Number(accept.amount) / 1_000_000, "USDC")
+            : "? USDC";
+          warn(`  Payment: ${amount} on ${displayNetwork(accept.network)} for tool "${toolName}"`);
+        }
+      }
+
       // Connect to remote MCP server
       const remoteClient = new Client({ name: "x402-proxy", version: __VERSION__ });
       // x402MCPClient expects Client resolved with zod@3 (via @x402/mcp),
@@ -161,13 +175,7 @@ Add to your MCP client config (Claude, Cursor, etc.):
         {
           autoPayment: true,
           onPaymentRequested: (ctx) => {
-            const accept = ctx.paymentRequired.accepts?.[0];
-            if (accept) {
-              const amount = accept.amount ? (Number(accept.amount) / 1_000_000).toFixed(4) : "?";
-              warn(
-                `  Payment: ${amount} USDC on ${displayNetwork(accept.network)} for tool "${ctx.toolName}"`,
-              );
-            }
+            warnPayment(ctx.paymentRequired.accepts, ctx.toolName);
             return true;
           },
         },
@@ -233,11 +241,36 @@ Add to your MCP client config (Claude, Cursor, etc.):
 
       localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
-        const result = await x402Mcp.callTool(name, args ?? {});
-        return {
-          content: result.content as Array<{ type: string; [key: string]: unknown }>,
-          isError: result.isError,
-        };
+        try {
+          const result = await x402Mcp.callTool(name, args ?? {});
+          return {
+            content: result.content as Array<{ type: string; [key: string]: unknown }>,
+            isError: result.isError,
+          };
+        } catch (err) {
+          // Handle McpError(-32042) from dual-protocol servers that throw instead of isError
+          if (err instanceof McpError && err.code === -32042) {
+            const data = err.data as { x402?: Record<string, unknown> } | undefined;
+            const x402PaymentRequired = data?.x402;
+            if (x402PaymentRequired) {
+              const accepts = (
+                x402PaymentRequired as {
+                  accepts?: Array<{ amount?: string; network: string }>;
+                }
+              ).accepts;
+              warnPayment(accepts, name);
+              const paymentPayload = await x402PaymentClient.createPaymentPayload(
+                x402PaymentRequired as Parameters<typeof x402PaymentClient.createPaymentPayload>[0],
+              );
+              const result = await x402Mcp.callToolWithPayment(name, args ?? {}, paymentPayload);
+              return {
+                content: result.content as Array<{ type: string; [key: string]: unknown }>,
+                isError: result.isError,
+              };
+            }
+          }
+          throw err;
+        }
       });
 
       if (remoteResources.length > 0) {
@@ -306,6 +339,20 @@ Add to your MCP client config (Claude, Cursor, etc.):
       const account = privateKeyToAccount(wallet.evmKey as `0x${string}`);
       const maxDeposit = config?.mppSessionBudget ?? "1";
 
+      // Wrap tempo methods to capture payment amounts from challenges
+      let lastChallengeAmount: number | undefined;
+      const tempoMethods = tempo({ account, maxDeposit });
+      const wrappedMethods = tempoMethods.map((m) => ({
+        ...m,
+        createCredential: async (params: { challenge: { request: Record<string, unknown> } }) => {
+          const req = params.challenge.request as { amount?: string; decimals?: number };
+          if (req.amount) {
+            lastChallengeAmount = Number(req.amount) / 10 ** (req.decimals ?? 6);
+          }
+          return (m.createCredential as (p: unknown) => Promise<string>)(params);
+        },
+      }));
+
       // Connect base client to remote MCP server
       const remoteClient = new Client({ name: "x402-proxy", version: __VERSION__ });
 
@@ -315,7 +362,7 @@ Add to your MCP client config (Claude, Cursor, etc.):
       // but ours resolves with zod@4. Structurally identical.
       const mppClient = McpClient.wrap(
         remoteClient as unknown as Parameters<typeof McpClient.wrap>[0],
-        { methods: [tempo({ account, maxDeposit })] },
+        { methods: wrappedMethods as unknown as Parameters<typeof McpClient.wrap>[1]["methods"] },
       );
 
       // Discover remote capabilities via base client
@@ -368,11 +415,17 @@ Add to your MCP client config (Claude, Cursor, etc.):
             net: TEMPO_NETWORK,
             from: wallet.evmAddress ?? "unknown",
             tx: result.receipt.reference,
+            amount: lastChallengeAmount,
             token: "USDC",
             label: `mcp:${name}`,
           };
           appendHistory(getHistoryPath(), record);
-          warn(`  MPP payment for tool "${name}" (Tempo)`);
+          const amountStr =
+            lastChallengeAmount !== undefined ? formatAmount(lastChallengeAmount, "USDC") : "";
+          warn(
+            `  MPP payment for tool "${name}" (Tempo)${amountStr ? ` \u00b7 ${amountStr}` : ""}`,
+          );
+          lastChallengeAmount = undefined;
         }
 
         return {
