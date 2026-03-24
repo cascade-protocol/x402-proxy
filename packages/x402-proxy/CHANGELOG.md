@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-03-24
+
+### Added
+- JSON response pretty-printing: non-streaming `application/json` responses auto-formatted with 2-space indent on TTY
+- `--json` flag now works: forces JSON pretty-printing even when piped (non-TTY)
+- Color-coded HTTP status lines: green for 2xx, yellow for 3xx, red for 4xx/5xx
+
+### Fixed
+- MPP streaming payment label unified from `MPP session:` to `Payment: ... MPP` to match non-streaming format
+- MPP streaming status line now starts on a new line instead of appending to last JSON chunk
+
 ## [0.8.2] - 2026-03-24
 
 ### Fixed
@@ -219,7 +230,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.3...HEAD
+[0.8.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.1...v0.8.0

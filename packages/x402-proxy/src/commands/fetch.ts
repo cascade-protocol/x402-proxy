@@ -21,6 +21,10 @@ import { getHistoryPath, isConfigured, loadConfig } from "../lib/config.js";
 import { dim, error, info, isTTY } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 
+function isStreamingResponse(res: Response): boolean {
+  return (res.headers.get("content-type") ?? "").includes("text/event-stream");
+}
+
 type FetchFlags = {
   method: string;
   body: string | undefined;
@@ -317,9 +321,10 @@ Examples:
 
           const elapsedMs = Date.now() - startMs;
           const spentAmount = mppPayment.amount ? Number(mppPayment.amount) : undefined;
+          if (isTTY()) process.stderr.write("\n");
           if (mppPayment && isTTY()) {
-            const spentStr = spentAmount != null ? `${formatAmount(spentAmount, "USDC")} ` : "";
-            info(`  MPP session: ${spentStr}(${displayNetwork(mppPayment.network)})`);
+            const mppAmount = spentAmount != null ? ` ${formatAmount(spentAmount, "USDC")}` : "";
+            info(`  Payment:${mppAmount} MPP (${displayNetwork(mppPayment.network)})`);
           }
           if (isTTY()) {
             dim(`  Streamed (${elapsedMs}ms)`);
@@ -570,7 +575,9 @@ Examples:
     }
 
     if (isTTY()) {
-      dim(`  ${response.status} ${response.statusText} (${elapsedMs}ms)`);
+      const statusText = `  ${response.status} ${response.statusText} (${elapsedMs}ms)`;
+      const colorFn = response.status < 300 ? pc.green : response.status < 400 ? pc.yellow : pc.red;
+      process.stderr.write(`${colorFn(statusText)}\n`);
     }
 
     // Record payment in history
@@ -606,22 +613,33 @@ Examples:
     }
 
     // Stream response body to stdout
+    const isJsonResponse = (response.headers.get("content-type") ?? "").includes(
+      "application/json",
+    );
+    const shouldPrettyPrint =
+      isJsonResponse && (flags.json || isTTY()) && !isStreamingResponse(response);
     if (response.body) {
-      const reader = response.body.getReader();
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          process.stdout.write(value);
+      if (shouldPrettyPrint) {
+        const text = await response.text();
+        try {
+          process.stdout.write(`${JSON.stringify(JSON.parse(text), null, 2)}\n`);
+        } catch {
+          process.stdout.write(text);
+          if (isTTY()) process.stdout.write("\n");
         }
-      } finally {
-        reader.releaseLock();
+      } else {
+        const reader = response.body.getReader();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            process.stdout.write(value);
+          }
+        } finally {
+          reader.releaseLock();
+        }
+        if (isTTY()) process.stdout.write("\n");
       }
-    }
-
-    // Trailing newline for TTY
-    if (isTTY() && response.body) {
-      process.stdout.write("\n");
     }
   },
 });
