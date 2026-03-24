@@ -241,6 +241,13 @@ Examples:
     }
 
     const method = flags.method || "GET";
+    // Auto-detect JSON body and set Content-Type if not explicitly provided
+    if (flags.body && !headers.has("Content-Type")) {
+      const trimmed = flags.body.trimStart();
+      if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+        headers.set("Content-Type", "application/json");
+      }
+    }
     // Convert Headers to plain object so mppx SSE spread doesn't lose them
     const init: RequestInit = { method, headers: Object.fromEntries(headers.entries()) };
     if (flags.body) init.body = flags.body;
