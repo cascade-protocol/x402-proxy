@@ -1,6 +1,6 @@
 {
   "name": "x402-proxy",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo. Also works as an OpenClaw plugin.",
   "type": "module",
   "sideEffects": false,
@@ -47,7 +47,7 @@
     "@x402/evm": "^2.6.0",
     "@x402/fetch": "^2.6.0",
     "@x402/mcp": "^2.6.0",
-    "mppx": "^0.4.7",
+    "mppx": "^0.4.9",
     "@x402/svm": "^2.6.0",
     "ethers": "^6.0.0",
     "picocolors": "^1.1.1",

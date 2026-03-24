@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-03-24
+
+### Added
+- Curl-style short flags: `-X` (method), `-H` (header), `-d` (body) for the `fetch` command
+- `-H` preprocessing in CLI entry point to work around Stricli reserving `-H` for `--help-all`
+
+### Fixed
+- SSE streaming resilience: swallow Node.js "terminated" errors when server closes connection after final event, so payment logging still completes
+- Bumped `mppx` to ^0.4.9 (fixes 204-safe SSE receipt wrapping and idempotent voucher replay)
+
 ## [0.8.0] - 2026-03-21
 
 ### Added
@@ -204,7 +214,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.6.0...v0.7.0

@@ -99,6 +99,10 @@ Examples:
         default: false,
       },
     },
+    aliases: {
+      X: "method",
+      d: "body",
+    },
     positional: {
       kind: "tuple",
       parameters: [
@@ -273,8 +277,16 @@ Examples:
             verbose("opening SSE session...");
             const tokens = await mppHandler.sse(parsedUrl.toString(), init);
             verbose("SSE stream opened, reading tokens...");
-            for await (const token of tokens) {
-              process.stdout.write(token);
+            try {
+              for await (const token of tokens) {
+                process.stdout.write(token);
+              }
+            } catch (streamErr) {
+              // Server may close connection after final SSE event (e.g. mppx 204 receipt bug).
+              // Swallow "terminated" so payment/history logging still runs.
+              const msg = streamErr instanceof Error ? streamErr.message : String(streamErr);
+              verbose(`SSE stream error: ${msg}`);
+              if (!msg.includes("terminated")) throw streamErr;
             }
             verbose("SSE stream complete");
           } finally {

@@ -40,10 +40,10 @@ Works like curl. Response body streams to stdout, payment info goes to stderr.
 # GET request
 $ npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi
 
-# POST with body and headers
-$ npx x402-proxy --method POST \
-  --header "Content-Type: application/json" \
-  --body '{"url":"https://x402.org"}' \
+# POST with body and headers (curl-style short flags: -X, -H, -d)
+$ npx x402-proxy -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://x402.org"}' \
   https://web.surf.cascade.fyi/v1/crawl
 
 # Force a specific network
@@ -54,9 +54,8 @@ $ npx x402-proxy --verbose https://api.example.com/data
 
 # Use MPP protocol for streaming payments
 $ npx x402-proxy --protocol mpp \
-  --method POST \
-  --header "Content-Type: application/json" \
-  --body '{"model":"minimax/minimax-m2.5","stream":true,"messages":[{"role":"user","content":"Hello"}]}' \
+  -X POST -H "Content-Type: application/json" \
+  -d '{"model":"minimax/minimax-m2.5","stream":true,"messages":[{"role":"user","content":"Hello"}]}' \
   https://inference.surf.cascade.fyi/v1/chat/completions
 
 # Pipe-safe
