@@ -3,6 +3,7 @@ import type { PaymentRequirements } from "@x402/fetch";
 import { describe, expect, it } from "vitest";
 import { deriveSolanaKeypair } from "./derive.js";
 import {
+  createAddressValidationPolicy,
   createNetworkFilter,
   createNetworkPreference,
   networkToCaipPrefix,
@@ -120,6 +121,63 @@ describe("createNetworkPreference", () => {
   it("falls back when tempo preference unavailable", () => {
     const selector = createNetworkPreference("tempo");
     expect(selector(2, [baseReq])).toEqual(baseReq);
+  });
+});
+
+// --- createAddressValidationPolicy ---
+
+describe("createAddressValidationPolicy", () => {
+  const policy = createAddressValidationPolicy();
+
+  const validBaseReq = makeReq({
+    network: "eip155:8453",
+    payTo: "0x2cA6f53D5Fbc89d9a0658AEc0352a453ac991EC1",
+  });
+  const validSolanaReq = makeReq({
+    network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    payTo: "AepWpq3GQwL8CeKMtZyKtKPa7W91Coygh3ropAJapVdU",
+  });
+  const malformedSolanaReq = makeReq({
+    network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+    payTo: "0x2cA6f53D5Fbc89d9a0658AEc0352a453ac991EC1",
+  });
+  const malformedEvmReq = makeReq({
+    network: "eip155:8453",
+    payTo: "AepWpq3GQwL8CeKMtZyKtKPa7W91Coygh3ropAJapVdU",
+  });
+
+  it("passes valid EVM and Solana options", () => {
+    expect(policy(2, [validBaseReq, validSolanaReq])).toEqual([validBaseReq, validSolanaReq]);
+  });
+
+  it("filters out Solana option with EVM payTo", () => {
+    expect(policy(2, [validBaseReq, malformedSolanaReq])).toEqual([validBaseReq]);
+  });
+
+  it("filters out EVM option with Solana payTo", () => {
+    expect(policy(2, [malformedEvmReq, validSolanaReq])).toEqual([validSolanaReq]);
+  });
+
+  it("falls back to valid option when first is malformed", () => {
+    expect(policy(2, [malformedSolanaReq, validBaseReq])).toEqual([validBaseReq]);
+  });
+
+  it("throws with clear message when all options are malformed", () => {
+    expect(() => policy(2, [malformedSolanaReq])).toThrow(
+      "Server returned only malformed payment options",
+    );
+    expect(() => policy(2, [malformedSolanaReq])).toThrow("Solana option has EVM-format payTo");
+  });
+
+  it("throws listing all malformed reasons when multiple bad options", () => {
+    expect(() => policy(2, [malformedSolanaReq, malformedEvmReq])).toThrow(
+      "payTo addresses don't match the advertised networks",
+    );
+  });
+
+  it("passes through unknown network types unchanged", () => {
+    const unknownReq = makeReq({ network: "cosmos:cosmoshub-4", payTo: "cosmos1xyz" });
+    expect(policy(2, [unknownReq])).toEqual([unknownReq]);
   });
 });
 

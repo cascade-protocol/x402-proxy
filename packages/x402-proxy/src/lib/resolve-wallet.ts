@@ -125,6 +125,33 @@ export function networkToCaipPrefix(name: string): string {
   }
 }
 
+/**
+ * Validate that payTo addresses match the network format.
+ * Filters out malformed entries (e.g. EVM hex address on a Solana network).
+ */
+export function createAddressValidationPolicy(): PaymentPolicy {
+  return (_version, reqs) => {
+    const malformed: string[] = [];
+    const valid = reqs.filter((r) => {
+      if (r.network.startsWith("solana:") && r.payTo.startsWith("0x")) {
+        malformed.push(`Solana option has EVM-format payTo (${r.payTo})`);
+        return false;
+      }
+      if (r.network.startsWith("eip155:") && !r.payTo.startsWith("0x")) {
+        malformed.push(`EVM option has non-EVM payTo (${r.payTo})`);
+        return false;
+      }
+      return true;
+    });
+    if (valid.length === 0 && malformed.length > 0) {
+      throw new Error(
+        `Server returned only malformed payment options:\n  ${malformed.join("\n  ")}\nThe server's payTo addresses don't match the advertised networks.`,
+      );
+    }
+    return valid;
+  };
+}
+
 export function createNetworkFilter(network: string): PaymentPolicy {
   const prefix = networkToCaipPrefix(network);
   return (_version, reqs) => {
@@ -178,6 +205,8 @@ export async function buildX402Client(
     const signer = await createKeyPairSignerFromBytes(wallet.solanaKey);
     registerExactSvmScheme(client, { signer });
   }
+
+  client.registerPolicy(createAddressValidationPolicy());
 
   if (opts?.network) {
     client.registerPolicy(createNetworkFilter(opts.network));

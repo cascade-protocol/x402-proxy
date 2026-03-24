@@ -1,6 +1,6 @@
 {
   "name": "x402-proxy",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo. Also works as an OpenClaw plugin.",
   "type": "module",
   "sideEffects": false,

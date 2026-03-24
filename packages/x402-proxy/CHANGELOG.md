@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-03-24
+
+### Fixed
+- Servers returning Solana payment options with EVM-format `payTo` addresses (e.g. `0x...`) no longer crash with a base58 decode error - malformed options are filtered out and valid options are used instead
+- When all payment options from a server have mismatched address formats, a clear error is shown instead of a cryptic codec failure
+
 ## [0.8.3] - 2026-03-24
 
 ### Added
@@ -230,7 +236,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.3...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.4...HEAD
+[0.8.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.2...v0.8.3
 [0.8.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.0...v0.8.1
