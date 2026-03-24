@@ -35,6 +35,15 @@ function parseProviders(config: Record<string, unknown>): {
   return { models, upstreamOrigins };
 }
 
+type ProviderCatalogResult = {
+  provider: {
+    baseUrl: string;
+    api?: string;
+    authHeader?: boolean;
+    models: Array<Omit<ModelEntry, "provider">>;
+  };
+} | null;
+
 type OpenClawPluginApi = {
   pluginConfig?: Record<string, unknown>;
   logger: { info: (msg: string) => void; error: (msg: string) => void };
@@ -42,11 +51,9 @@ type OpenClawPluginApi = {
     id: string;
     label: string;
     auth: unknown[];
-    models: {
-      baseUrl: string;
-      api: string;
-      authHeader: boolean;
-      models: Array<Omit<ModelEntry, "provider"> & { input: Array<"text" | "image"> }>;
+    catalog: {
+      order?: "simple" | "profile" | "paired" | "late";
+      run: (ctx: unknown) => Promise<ProviderCatalogResult>;
     };
   }) => void;
   registerTool: (tool: unknown) => void;
@@ -82,13 +89,16 @@ export function register(api: OpenClawPluginApi): void {
       id: name,
       label: `${name} (x402)`,
       auth: [],
-      models: {
-        baseUrl: prov.baseUrl,
-        api: "openai-completions",
-        authHeader: false,
-        models: prov.models as Array<
-          Omit<ModelEntry, "provider"> & { input: Array<"text" | "image"> }
-        >,
+      catalog: {
+        order: "simple",
+        run: async () => ({
+          provider: {
+            baseUrl: prov.baseUrl,
+            api: "openai-completions",
+            authHeader: false,
+            models: prov.models,
+          },
+        }),
       },
     });
   }
