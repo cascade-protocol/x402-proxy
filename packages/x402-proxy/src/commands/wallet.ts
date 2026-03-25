@@ -78,11 +78,7 @@ export async function fetchSolanaBalances(
 
   const sol = solRes.result?.value != null ? (solRes.result.value / 1e9).toFixed(6) : "?";
   const usdcVal = usdcRes.result?.value;
-  const usdc = usdcVal
-    ? formatUsdcValue(Number(usdcVal.uiAmountString))
-    : usdcVal === undefined
-      ? "?"
-      : "0";
+  const usdc = usdcVal ? formatUsdcValue(Number(usdcVal.uiAmountString)) : "0";
   return { sol, usdc };
 }
 

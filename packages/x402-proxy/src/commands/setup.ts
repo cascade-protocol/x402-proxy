@@ -64,6 +64,7 @@ export async function runSetup(opts?: { force?: boolean }) {
   const sol = deriveSolanaKeypair(mnemonic);
 
   prompts.log.success(`Base address:   ${pc.green(evm.address)}`);
+  prompts.log.success(`Tempo address:  ${pc.green(evm.address)}`);
   prompts.log.success(`Solana address: ${pc.green(sol.address)}`);
 
   const wallet: WalletFile = {
@@ -79,7 +80,7 @@ export async function runSetup(opts?: { force?: boolean }) {
     message: "Preferred payment protocol?",
     options: [
       { value: "x402", label: "x402 - on-chain payments (Base, Solana)" },
-      { value: "mpp", label: "MPP - streaming micropayments (Tempo)" },
+      { value: "mpp", label: "MPP - machine payments over HTTP 402 (Tempo)" },
     ],
   });
   if (prompts.isCancel(protocol)) {

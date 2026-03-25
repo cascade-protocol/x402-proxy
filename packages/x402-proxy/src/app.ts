@@ -4,6 +4,7 @@ import { buildApplication, buildRouteMap } from "@stricli/core";
 import { configSetCommand, configShowCommand, configUnsetCommand } from "./commands/config.js";
 import { fetchCommand } from "./commands/fetch.js";
 import { mcpCommand } from "./commands/mcp.js";
+import { mcpAddCommand } from "./commands/mcp-add.js";
 import { setupCommand } from "./commands/setup.js";
 import { statusCommand } from "./commands/status.js";
 import { walletInfoCommand } from "./commands/wallet.js";
@@ -34,10 +35,21 @@ const configRoutes = buildRouteMap({
   },
 });
 
+const mcpRoutes = buildRouteMap({
+  routes: {
+    proxy: mcpCommand,
+    add: mcpAddCommand,
+  },
+  defaultCommand: "proxy",
+  docs: {
+    brief: "MCP proxy and management",
+  },
+});
+
 const routes = buildRouteMap({
   routes: {
     fetch: fetchCommand,
-    mcp: mcpCommand,
+    mcp: mcpRoutes,
     wallet: walletRoutes,
     config: configRoutes,
     setup: setupCommand,

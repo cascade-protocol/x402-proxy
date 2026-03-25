@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-03-25
+
+### Added
+- `mcp add` command - onboarding wizard to install MCP servers into Claude Code, Cursor, VS Code, and 16+ other AI clients via `@getmcp/generators`
+- Auto-detects installed AI clients and highlights them in the selection list
+- Shows config diff preview with green markers before writing
+- Prompts to overwrite if server name already exists (shows current config)
+- Wallet setup runs automatically if not yet configured
+- Balance check and funding hints shown after successful install
+- `-c` / `--config-dir` global flag to override config directory for all commands
+- Custom config directory injected as `XDG_CONFIG_HOME` env var into generated MCP server configs
+- Tempo address shown alongside Base address in setup wizard
+
+### Fixed
+- Solana USDC balance shows `0` instead of `?` for fresh wallets (non-existent ATA means zero balance, not unknown)
+- MPP payment protocol description corrected from "streaming micropayments" to "machine payments over HTTP 402"
+
 ## [0.8.6] - 2026-03-25
 
 ### Fixed
@@ -246,7 +263,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.4...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.6...v0.9.0
 [0.8.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.3...v0.8.4

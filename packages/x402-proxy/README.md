@@ -14,7 +14,19 @@ No wallet? It'll walk you through setup automatically. One mnemonic derives both
 
 ## MCP Proxy
 
-Let your AI agent consume any paid MCP server. Configure in Claude, Cursor, or any MCP client:
+Let your AI agent consume any paid MCP server.
+
+### Quick setup
+
+```bash
+npx x402-proxy mcp add my-service https://mcp.example.com/sse
+```
+
+Auto-detects installed AI clients (Claude Code, Cursor, VS Code, and 16+ others), shows a config preview, and writes it for you. Runs wallet setup if needed.
+
+### Manual config
+
+Or add to your client config directly:
 
 ```json
 {
@@ -67,6 +79,7 @@ $ npx x402-proxy https://api.example.com/data | jq '.results'
 ```bash
 $ npx x402-proxy <url>                    # paid HTTP request (default command)
 $ npx x402-proxy mcp <url>                # MCP stdio proxy for agents
+$ npx x402-proxy mcp add <name> <url>     # install MCP server into your AI client
 $ npx x402-proxy setup                    # onboarding wizard
 $ npx x402-proxy status                   # config + wallet + spend summary
 $ npx x402-proxy config                   # show current configuration
@@ -77,7 +90,7 @@ $ npx x402-proxy wallet history           # payment history
 $ npx x402-proxy wallet export-key <target> # bare key/mnemonic to stdout (evm|solana|mnemonic)
 ```
 
-All commands support `--help` for details.
+All commands support `--help` for details. Use `-c <dir>` to override the config directory.
 
 ## Wallet
 

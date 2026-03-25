@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__surf__surf_web_search",
+      "mcp__surf__surf_web_crawl",
+      "mcp__surf__surf_twitter_search",
+      "mcp__surf__surf_twitter_tweet",
+      "mcp__surf__surf_twitter_user",
+      "mcp__surf__surf_reddit_search",
+      "mcp__surf__surf_reddit_post",
+      "mcp__surf__surf_reddit_subreddit",
+      "mcp__surf__surf_reddit_user"
+    ]
+  }
+}

@@ -42,6 +42,7 @@ npx x402-proxy https://api.example.com/data > response.json
 ```
 x402-proxy <url>                        # paid HTTP request (default)
 x402-proxy mcp <url>                    # MCP stdio proxy for AI agents
+x402-proxy mcp add <name> <url>         # install MCP server into AI client
 x402-proxy setup                        # wallet onboarding wizard
 x402-proxy setup --force                # re-run setup (overwrite existing wallet)
 x402-proxy status                       # config + wallet + daily spend summary
@@ -70,7 +71,13 @@ x402-proxy wallet export-key mnemonic   # bare mnemonic to stdout
 
 ## MCP proxy for AI agents
 
-Drop into Claude, Cursor, or any MCP client config:
+Quick setup (auto-detects installed AI clients):
+
+```bash
+x402-proxy mcp add my-service https://mcp.example.com/sse
+```
+
+Or drop into your client config manually:
 
 ```json
 {
