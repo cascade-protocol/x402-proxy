@@ -8,3 +8,4 @@ dist/
 .pnpm-store
 *.tgz
 .claude/settings.local.json
+tmp/
