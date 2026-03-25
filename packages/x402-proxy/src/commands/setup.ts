@@ -122,7 +122,7 @@ export async function runSetup(opts?: { force?: boolean }) {
 
   prompts.log.step("Try your first request:");
   prompts.log.message(
-    `  ${pc.cyan("$ npx x402-proxy https://twitter.surf.cascade.fyi/user/cascade_fyi")}`,
+    `  ${pc.cyan("$ npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi")}`,
   );
 
   prompts.outro(pc.green("Setup complete!"));

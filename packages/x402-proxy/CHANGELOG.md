@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-03-25
+
+### Fixed
+- Example URLs in help output and setup wizard: `/user/` corrected to `/users/` (was returning 404)
+
 ## [0.8.5] - 2026-03-24
 
 ### Fixed
@@ -242,6 +247,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
 [Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.4...HEAD
+[0.8.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.4...v0.8.5
 [0.8.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.3...v0.8.4
 [0.8.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.2...v0.8.3
