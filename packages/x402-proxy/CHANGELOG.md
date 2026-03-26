@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-03-26
+
+### Fixed
+- Solana RPC 429 rate-limit failures on concurrent payments - replaced upstream `ExactSvmScheme` (creates new RPC client per call) with `OptimizedSvmScheme` that shares a single RPC client with `@solana/kit` request coalescing (identical calls in the same microtask merge into one network request)
+- Hardcoded USDC mint metadata (Token Program address, 6 decimals) to skip `fetchMint` RPC call entirely for USDC payments
+- Added RPC failover transport: on 429 from one endpoint, immediately tries the next instead of failing. Two public mainnet RPCs: `api.mainnet.solana.com` (Solana Labs, 100 req/10s) and `public.rpc.solanavibestation.com` (community, 5 RPS)
+- Custom RPC URL (via config or OpenClaw plugin) is tried first, with public RPCs as fallback
+
+### Changed
+- Added `@solana-program/compute-budget`, `@solana-program/token`, `@solana-program/token-2022`, `@x402/core` as direct dependencies (previously transitive via `@x402/svm`)
+
 ## [0.9.2] - 2026-03-26
 
 ### Changed
@@ -284,7 +295,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.3...HEAD
+[0.9.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.6...v0.9.0

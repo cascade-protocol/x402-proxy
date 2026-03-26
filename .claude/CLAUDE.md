@@ -102,3 +102,82 @@ act -n --workflows .github/workflows/publish.yml \
 ```
 
 Always dry-run with act after modifying workflow files to catch issues before pushing.
+
+## Testing & Debugging
+
+All commands run from the repo root. Always `pnpm build` first.
+
+### CLI smoke test
+```bash
+# Direct HTTP request (single process, no concurrency concerns)
+node packages/x402-proxy/dist/bin/cli.js https://twitter.surf.cascade.fyi/users/cascade_fyi --network solana
+
+# Wallet info
+node packages/x402-proxy/dist/bin/cli.js wallet info
+```
+
+### MCP Inspector - interactive UI
+```bash
+# Start inspector (opens browser at localhost:6274)
+npx @modelcontextprotocol/inspector \
+  node packages/x402-proxy/dist/bin/cli.js mcp --network solana https://surf.cascade.fyi/mcp
+```
+Use the Tools tab to call tools manually (e.g. `surf_twitter_user` with `ref=cascade_fyi`).
+
+### MCP Inspector - CLI mode
+```bash
+# List tools (no payment)
+npx @modelcontextprotocol/inspector --cli \
+  node packages/x402-proxy/dist/bin/cli.js mcp https://surf.cascade.fyi/mcp \
+  --method tools/list
+
+# Call a tool
+npx @modelcontextprotocol/inspector --cli \
+  node packages/x402-proxy/dist/bin/cli.js mcp --network solana https://surf.cascade.fyi/mcp \
+  --method tools/call --tool-name surf_twitter_user --tool-arg ref=cascade_fyi
+```
+
+### MCP concurrency stress test via Inspector proxy
+
+The Inspector proxy at `localhost:6277` exposes a Streamable HTTP endpoint. This lets you
+fire concurrent requests through a **single MCP server process** - critical for testing
+RPC coalescing and failover (which only work within one process, not across separate CLIs).
+
+Auth header: `x-mcp-proxy-auth: Bearer <TOKEN>` (token printed at inspector startup).
+
+```bash
+TOKEN="<token from inspector startup>"
+
+# 1. Create a session (spawns a new stdio MCP server behind the proxy)
+curl -s -X POST "http://localhost:6277/mcp?transportType=stdio&command=node&args=dist/bin/cli.js%20mcp%20--network%20solana%20https://surf.cascade.fyi/mcp" \
+  -H "Content-Type: application/json" \
+  -H "x-mcp-proxy-auth: Bearer $TOKEN" \
+  -H "Accept: application/json, text/event-stream" \
+  -D /tmp/mcp-headers.txt \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"stress-test","version":"1.0.0"}}}'
+
+# Extract session ID from response headers
+SESSION=$(grep -i 'mcp-session-id' /tmp/mcp-headers.txt | tr -d '\r' | awk '{print $2}')
+
+# 2. Fire N concurrent tool calls through the single server process
+call() {
+  local id=$1
+  curl -s --max-time 120 -X POST "http://localhost:6277/mcp" \
+    -H "Content-Type: application/json" \
+    -H "x-mcp-proxy-auth: Bearer $TOKEN" \
+    -H "mcp-session-id: $SESSION" \
+    -H "Accept: application/json, text/event-stream" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"tools/call\",\"params\":{\"name\":\"surf_twitter_user\",\"arguments\":{\"ref\":\"cascade_fyi\"}}}"
+}
+
+# Fire 30 concurrent calls
+for i in $(seq 1 30); do call $i & done
+wait
+```
+
+**Key details:**
+- Each CLI invocation is a separate process with its own RPC client - no coalescing across processes
+- Coalescing + failover only help in single-process modes: MCP server, OpenClaw plugin
+- The Inspector proxy routes all concurrent HTTP requests through one stdio MCP server process
+- 429 errors from Solana RPC show as bare `"HTTP error (429)"` in MCP mode (no "Failed to create payment" wrapper)
+- Use `surf.cascade.fyi/mcp` as the test endpoint (Solana payments)

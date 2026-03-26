@@ -3,13 +3,13 @@ import { base58 } from "@scure/base";
 import { toClientEvmSigner } from "@x402/evm";
 import { registerExactEvmScheme } from "@x402/evm/exact/client";
 import { type PaymentPolicy, type SelectPaymentRequirements, x402Client } from "@x402/fetch";
-import { registerExactSvmScheme } from "@x402/svm/exact/client";
 import { createPublicClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { calcSpend, displayNetwork, formatUsdcValue, readHistory } from "../history.js";
 import { getHistoryPath, loadWalletFile } from "./config.js";
 import { deriveEvmKeypair, deriveSolanaKeypair } from "./derive.js";
+import { OptimizedSvmScheme } from "./optimized-svm-scheme.js";
 
 export type WalletSource = "flag" | "env" | "mnemonic-env" | "wallet-file" | "none";
 
@@ -203,7 +203,7 @@ export async function buildX402Client(
   if (wallet.solanaKey) {
     const { createKeyPairSignerFromBytes } = await import("@solana/kit");
     const signer = await createKeyPairSignerFromBytes(wallet.solanaKey);
-    registerExactSvmScheme(client, { signer });
+    client.register("solana:*", new OptimizedSvmScheme(signer));
   }
 
   client.registerPolicy(createAddressValidationPolicy());

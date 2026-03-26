@@ -2,9 +2,9 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createKeyPairSignerFromBytes, type KeyPairSigner } from "@solana/kit";
 import { x402Client } from "@x402/fetch";
-import { ExactSvmScheme } from "@x402/svm/exact/client";
 import { createX402ProxyHandler, type X402ProxyHandler } from "../handler.js";
 import { getHistoryPath } from "../lib/config.js";
+import { OptimizedSvmScheme } from "../lib/optimized-svm-scheme.js";
 import { resolveWallet } from "../lib/resolve-wallet.js";
 import { loadSvmWallet } from "../wallet.js";
 import { createWalletCommand } from "./commands.js";
@@ -147,7 +147,7 @@ export function register(api: OpenClawPluginApi): void {
     }
 
     const client = new x402Client();
-    client.register(SOL_MAINNET, new ExactSvmScheme(signer, { rpcUrl }));
+    client.register(SOL_MAINNET, new OptimizedSvmScheme(signer, { rpcUrl }));
     proxyRef = createX402ProxyHandler({ client });
 
     const upstreamOrigin = upstreamOrigins[0];
