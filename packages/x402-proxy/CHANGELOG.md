@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-03-26
+
+### Added
+- `setup --non-interactive` flag - auto-generates wallet and outputs addresses as JSON to stdout (`{"base":"0x...","tempo":"0x...","solana":"..."}`)
+- `setup --import-mnemonic` flag - import existing BIP-39 mnemonic non-interactively
+- MCP proxy auto-generates wallet on first run when no wallet exists (no more "No wallet configured" error)
+- OpenClaw integration example in README and SKILL.md: `openclaw mcp set surf '{"command":"npx","args":["-y","x402-proxy","mcp","https://surf.cascade.fyi/mcp"]}'`
+
+### Fixed
+- `npx -y` flag added to all generated MCP configs (`mcp add` command and docs) - prevents npx install prompt from corrupting MCP stdio protocol
+- MCP config examples no longer show `X402_PROXY_WALLET_MNEMONIC` env var as default - wallet file is the primary path, env vars are documented as fallback only
+- All example MCP URLs updated to `https://surf.cascade.fyi/mcp`
+- Non-interactive JSON output uses network names (`base`, `tempo`, `solana`) instead of generic `evm`
+
 ## [0.9.0] - 2026-03-25
 
 ### Added
@@ -263,7 +277,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.6...v0.9.0
 [0.8.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.5...v0.8.6
 [0.8.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.4...v0.8.5

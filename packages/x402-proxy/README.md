@@ -19,7 +19,7 @@ Let your AI agent consume any paid MCP server.
 ### Quick setup
 
 ```bash
-npx x402-proxy mcp add my-service https://mcp.example.com/sse
+npx x402-proxy mcp add surf https://surf.cascade.fyi/mcp
 ```
 
 Auto-detects installed AI clients (Claude Code, Cursor, VS Code, and 16+ others), shows a config preview, and writes it for you. Runs wallet setup if needed.
@@ -31,18 +31,21 @@ Or add to your client config directly:
 ```json
 {
   "mcpServers": {
-    "paid-service": {
+    "surf": {
       "command": "npx",
-      "args": ["x402-proxy", "mcp", "https://mcp.example.com/sse"],
-      "env": {
-        "X402_PROXY_WALLET_MNEMONIC": "your 24 words here"
-      }
+      "args": ["-y", "x402-proxy", "mcp", "https://surf.cascade.fyi/mcp"]
     }
   }
 }
 ```
 
-The proxy sits between your agent and the remote server, intercepting 402 responses, paying automatically, and forwarding the result. Supports both x402 and MPP protocols. Your agent never touches crypto.
+The proxy auto-generates a wallet on first run and uses `~/.config/x402-proxy/wallet.json`. No env vars needed. Your agent never touches crypto.
+
+For OpenClaw:
+
+```bash
+openclaw mcp set surf '{"command":"npx","args":["-y","x402-proxy","mcp","https://surf.cascade.fyi/mcp"]}'
+```
 
 ## HTTP Requests
 
@@ -110,7 +113,7 @@ $ MY_MNEMONIC=$(npx x402-proxy wallet export-key mnemonic)
 
 ## Env Vars
 
-Override wallet per-instance (useful for MCP configs):
+Override wallet per-instance (fallback for environments where the wallet file isn't accessible):
 
 ```
 X402_PROXY_WALLET_MNEMONIC     # BIP-39 mnemonic (derives both chains)

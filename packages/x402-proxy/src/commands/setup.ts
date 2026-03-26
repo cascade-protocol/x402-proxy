@@ -5,6 +5,7 @@ import {
   getConfigDirShort,
   getWalletPath,
   isConfigured,
+  loadWalletFile,
   type ProxyConfig,
   saveConfig,
   saveWalletFile,
@@ -12,7 +13,24 @@ import {
 } from "../lib/config.js";
 import { deriveEvmKeypair, deriveSolanaKeypair, generateMnemonic } from "../lib/derive.js";
 
-export async function runSetup(opts?: { force?: boolean }) {
+export async function runSetup(opts?: {
+  force?: boolean;
+  nonInteractive?: boolean;
+  importMnemonic?: string;
+}) {
+  const nonInteractive = opts?.nonInteractive ?? false;
+
+  // Non-interactive: output existing wallet as JSON if already configured
+  if (nonInteractive && isConfigured() && !opts?.force) {
+    const walletFile = loadWalletFile();
+    if (walletFile) {
+      process.stdout.write(
+        `${JSON.stringify({ base: walletFile.addresses.evm, tempo: walletFile.addresses.evm, solana: walletFile.addresses.solana })}\n`,
+      );
+      return;
+    }
+  }
+
   if (isConfigured() && !opts?.force) {
     prompts.log.warn(
       `Already configured. Wallet at ${pc.dim(getWalletPath())}\nTo reconfigure, run:\n  ${pc.cyan("$ npx x402-proxy setup --force")}`,
@@ -20,6 +38,39 @@ export async function runSetup(opts?: { force?: boolean }) {
     return;
   }
 
+  let mnemonic: string;
+
+  if (nonInteractive) {
+    // Non-interactive: use provided mnemonic or auto-generate
+    if (opts?.importMnemonic) {
+      const words = opts.importMnemonic.trim().split(/\s+/);
+      if (words.length !== 12 && words.length !== 24) {
+        process.stderr.write("Error: mnemonic must be 12 or 24 words\n");
+        process.exit(1);
+      }
+      mnemonic = opts.importMnemonic.trim();
+    } else {
+      mnemonic = generateMnemonic();
+    }
+
+    const evm = deriveEvmKeypair(mnemonic);
+    const sol = deriveSolanaKeypair(mnemonic);
+
+    const wallet: WalletFile = {
+      version: 1,
+      mnemonic,
+      addresses: { evm: evm.address, solana: sol.address },
+    };
+    saveWalletFile(wallet);
+    saveConfig({ preferredProtocol: "x402" });
+
+    process.stdout.write(
+      `${JSON.stringify({ base: evm.address, tempo: evm.address, solana: sol.address })}\n`,
+    );
+    return;
+  }
+
+  // Interactive flow
   prompts.intro(pc.cyan("x402-proxy setup"));
 
   prompts.log.info(
@@ -38,8 +89,6 @@ export async function runSetup(opts?: { force?: boolean }) {
     prompts.cancel("Setup cancelled.");
     process.exit(0);
   }
-
-  let mnemonic: string;
 
   if (action === "generate") {
     mnemonic = generateMnemonic();
@@ -129,9 +178,25 @@ export async function runSetup(opts?: { force?: boolean }) {
   prompts.outro(pc.green("Setup complete!"));
 }
 
-export const setupCommand = buildCommand<{ force: boolean }, [], CommandContext>({
+type SetupFlags = {
+  force: boolean;
+  nonInteractive: boolean;
+  importMnemonic: string | undefined;
+};
+
+export const setupCommand = buildCommand<SetupFlags, [], CommandContext>({
   docs: {
-    brief: "Set up x402-proxy with a new wallet",
+    brief: "Set up x402-proxy wallet (generate new or import existing mnemonic)",
+    fullDescription: `Set up x402-proxy wallet interactively, or use --non-interactive for automated environments.
+
+Non-interactive mode auto-generates a wallet and outputs JSON to stdout:
+  $ npx x402-proxy setup --non-interactive
+  {"base":"0x...","tempo":"0x...","solana":"..."}
+
+Import an existing mnemonic non-interactively:
+  $ npx x402-proxy setup --non-interactive --import-mnemonic "word1 word2 ... word24"
+
+If a wallet already exists, --non-interactive outputs the existing addresses.`,
   },
   parameters: {
     flags: {
@@ -140,10 +205,25 @@ export const setupCommand = buildCommand<{ force: boolean }, [], CommandContext>
         brief: "Overwrite existing configuration",
         default: false,
       },
+      nonInteractive: {
+        kind: "boolean",
+        brief: "Auto-generate wallet and output addresses as JSON (no prompts)",
+        default: false,
+      },
+      importMnemonic: {
+        kind: "parsed",
+        brief: "Import a BIP-39 mnemonic (use with --non-interactive)",
+        parse: String,
+        optional: true,
+      },
     },
     positional: { kind: "tuple", parameters: [] },
   },
   async func(flags) {
-    await runSetup({ force: flags.force });
+    await runSetup({
+      force: flags.force,
+      nonInteractive: flags.nonInteractive,
+      importMnemonic: flags.importMnemonic,
+    });
   },
 });

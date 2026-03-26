@@ -155,7 +155,7 @@ export const mcpAddCommand = buildCommand<McpAddFlags, [name: string, url: strin
         : {};
       const generated = generateConfig(clientId, serverName, {
         command: "npx",
-        args: ["x402-proxy", "mcp", url],
+        args: ["-y", "x402-proxy", "mcp", url],
         env: serverEnv,
         transport: "stdio",
       });

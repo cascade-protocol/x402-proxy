@@ -21,8 +21,9 @@ export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandCon
 
 Add to your MCP client config (Claude, Cursor, etc.):
   "command": "npx",
-  "args": ["x402-proxy", "mcp", "https://mcp.example.com/sse"],
-  "env": { "X402_PROXY_WALLET_MNEMONIC": "your 24 words" }`,
+  "args": ["-y", "x402-proxy", "mcp", "https://surf.cascade.fyi/mcp"]
+
+Wallet is auto-generated on first run. No env vars needed.`,
   },
   parameters: {
     flags: {
@@ -69,10 +70,17 @@ Add to your MCP client config (Claude, Cursor, etc.):
     });
 
     if (wallet.source === "none") {
-      error(
-        "No wallet configured.\nRun:\n  $ npx x402-proxy setup\n\nOr set X402_PROXY_WALLET_MNEMONIC",
-      );
-      process.exit(1);
+      // Auto-setup wallet in non-interactive environments (e.g. MCP stdio)
+      dim("No wallet found. Auto-generating...");
+      const { runSetup } = await import("./setup.js");
+      await runSetup({ nonInteractive: true });
+      // Re-resolve after setup
+      const fresh = resolveWallet({ evmKey: flags.evmKey, solanaKey: flags.solanaKey });
+      if (fresh.source === "none") {
+        error("Wallet auto-setup failed. Run: $ npx x402-proxy setup");
+        process.exit(1);
+      }
+      Object.assign(wallet, fresh);
     }
 
     dim(`x402-proxy MCP proxy -> ${remoteUrl}`);

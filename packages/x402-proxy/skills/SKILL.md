@@ -74,7 +74,7 @@ x402-proxy wallet export-key mnemonic   # bare mnemonic to stdout
 Quick setup (auto-detects installed AI clients):
 
 ```bash
-x402-proxy mcp add my-service https://mcp.example.com/sse
+x402-proxy mcp add surf https://surf.cascade.fyi/mcp
 ```
 
 Or drop into your client config manually:
@@ -82,18 +82,28 @@ Or drop into your client config manually:
 ```json
 {
   "mcpServers": {
-    "paid-service": {
+    "surf": {
       "command": "npx",
-      "args": ["x402-proxy", "mcp", "https://mcp.example.com/sse"],
-      "env": {
-        "X402_PROXY_WALLET_MNEMONIC": "your 24 words here"
-      }
+      "args": ["-y", "x402-proxy", "mcp", "https://surf.cascade.fyi/mcp"]
     }
   }
 }
 ```
 
-The proxy intercepts 402 responses, pays automatically, forwards the result. Supports StreamableHTTP and SSE.
+For OpenClaw:
+
+```bash
+openclaw mcp set surf '{"command":"npx","args":["-y","x402-proxy","mcp","https://surf.cascade.fyi/mcp"]}'
+```
+
+The wallet is auto-generated on first run and stored at `~/.config/x402-proxy/wallet.json`. No env vars needed. The proxy intercepts 402 responses, pays automatically, forwards the result. Supports StreamableHTTP and SSE.
+
+For non-interactive setup (e.g. automated provisioning):
+
+```bash
+npx x402-proxy setup --non-interactive
+# outputs: {"evm":"0x...","solana":"..."}
+```
 
 ## Wallet & env vars
 
