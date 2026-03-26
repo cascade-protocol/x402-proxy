@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-03-26
+
+### Changed
+- Upgraded all dependencies to latest: `@x402/*` 2.6.0 -> 2.8.0, `@solana/kit` 6.3.0 -> 6.5.0, `viem` 2.47.6, `@modelcontextprotocol/sdk` 1.28.0, `vitest` 4.1.1, `tsdown` 0.21.5, `@biomejs/biome` 2.4.9, `turbo` 2.8.20, `openclaw` 2026.3.24
+- `pnpm check` now runs tests alongside build, type-check, and biome
+- Biome config scoped to supported file types only (`*.ts`, `*.json`, `*.jsonc`)
+
 ## [0.9.1] - 2026-03-26
 
 ### Added
@@ -277,7 +284,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.6...v0.9.0
 [0.8.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.8.5...v0.8.6

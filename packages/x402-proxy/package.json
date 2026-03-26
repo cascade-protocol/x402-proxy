@@ -1,6 +1,6 @@
 {
   "name": "x402-proxy",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo. Also works as an OpenClaw plugin.",
   "type": "module",
   "sideEffects": false,
@@ -36,24 +36,24 @@
   "dependencies": {
     "@clack/prompts": "^1.1.0",
     "@getmcp/generators": "^0.10.1",
-    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@modelcontextprotocol/sdk": "^1.28.0",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
     "@scure/bip32": "^2.0.1",
     "@scure/bip39": "^2.0.1",
     "@sinclair/typebox": "^0.34.48",
-    "@solana/kit": "^6.0.0",
+    "@solana/kit": "^6.5.0",
     "@stricli/core": "^1.2.6",
-    "@x402/evm": "^2.6.0",
-    "@x402/fetch": "^2.6.0",
-    "@x402/mcp": "^2.6.0",
-    "@x402/svm": "^2.6.0",
-    "ethers": "^6.0.0",
+    "@x402/evm": "^2.8.0",
+    "@x402/fetch": "^2.8.0",
+    "@x402/mcp": "^2.8.0",
+    "@x402/svm": "^2.8.0",
+    "ethers": "^6.16.0",
     "mppx": "^0.4.9",
     "picocolors": "^1.1.1",
-    "viem": "^2.0.0",
-    "yaml": "^2.8.2"
+    "viem": "^2.47.6",
+    "yaml": "^2.8.3"
   },
   "peerDependencies": {
     "openclaw": ">=2026.3.8"
@@ -64,12 +64,12 @@
     }
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
-    "openclaw": ">=2026.3.8",
-    "publint": "^0.3.17",
-    "tsdown": "^0.20.3",
-    "typescript": "^5.9.0",
-    "vitest": "^4.0.18"
+    "@types/node": "^25.5.0",
+    "openclaw": "^2026.3.24",
+    "publint": "^0.3.18",
+    "tsdown": "^0.21.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.1"
   },
   "files": [
     "dist/**",
