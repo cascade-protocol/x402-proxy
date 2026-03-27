@@ -165,14 +165,16 @@ stdout = response body, stderr = payment info. Pipes, redirects, and `jq` all wo
 
 ## OpenClaw Plugin
 
-x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin. Install it to give your OpenClaw gateway automatic x402 payment capabilities:
+x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin for automatic x402 payments, wallet management, and pay-per-use inference proxying. For full installation, provider/model configuration, and troubleshooting, read `references/openclaw-plugin.md`.
 
-- `x_balance` tool - check wallet SOL/USDC balances
-- `x_payment` tool - call any x402-enabled endpoint with automatic payment
-- `/x_wallet` command - wallet status, send USDC, transaction history
-- HTTP route proxy (`/x402/*`) - proxies requests to upstream x402 endpoints with payment
+Quick install:
 
-Configure in your OpenClaw plugin settings with `providers` (upstream x402 endpoints and models) and optionally `keypairPath` or use the standard `X402_PROXY_WALLET_MNEMONIC` env var.
+```bash
+openclaw plugins install x402-proxy
+npx x402-proxy setup   # creates wallet if needed
+```
+
+Registers: `x_balance` tool, `x_payment` tool, `/x_wallet` command, `/x402/*` HTTP route for inference proxying.
 
 ## Library API
 
