@@ -47,7 +47,7 @@ Add the plugin config to your `openclaw.json` (or via `openclaw config edit`):
           "providers": {
             "surf-inference": {
               "baseUrl": "/x402/v1",
-              "upstreamUrl": "https://inference.surf.cascade.fyi",
+              "upstreamUrl": "https://surf.cascade.fyi/api/v1/inference",
               "models": [
                 { "id": "anthropic/claude-opus-4.6", "name": "Claude Opus 4.6", "maxTokens": 200000, "reasoning": true, "input": ["text", "image"], "cost": { "input": 0.015, "output": 0.075, "cacheRead": 0.0015, "cacheWrite": 0.01875 }, "contextWindow": 200000 },
                 { "id": "anthropic/claude-sonnet-4.6", "name": "Claude Sonnet 4.6", "maxTokens": 200000, "reasoning": true, "input": ["text", "image"], "cost": { "input": 0.003, "output": 0.015, "cacheRead": 0.0003, "cacheWrite": 0.00375 }, "contextWindow": 200000 },
@@ -79,7 +79,7 @@ Add the plugin config to your `openclaw.json` (or via `openclaw config edit`):
 | Field | Description |
 |-------|-------------|
 | `providers.<name>.baseUrl` | Route path registered in OpenClaw (e.g., `/x402/v1`) |
-| `providers.<name>.upstreamUrl` | Actual upstream endpoint (e.g., `https://inference.surf.cascade.fyi`) |
+| `providers.<name>.upstreamUrl` | Actual upstream endpoint (e.g., `https://surf.cascade.fyi/api/v1/inference`) |
 | `providers.<name>.models[]` | Model catalog array |
 | `keypairPath` | Optional path to solana-keygen JSON file (overrides wallet resolution) |
 | `rpcUrl` | Solana RPC URL (defaults to mainnet public endpoints with failover) |
@@ -118,11 +118,11 @@ openclaw models    # verify models appear
 
 ## Fetching latest models
 
-The model list on `inference.surf.cascade.fyi` changes over time. Fetch the current catalog:
+The model list on `surf.cascade.fyi` changes over time. Fetch the current catalog:
 
 ```bash
 npx x402-proxy --protocol mpp --network solana \
-  https://inference.surf.cascade.fyi/v1/models
+  https://surf.cascade.fyi/api/v1/inference/models
 ```
 
 Then update the `models` array in your plugin config accordingly.

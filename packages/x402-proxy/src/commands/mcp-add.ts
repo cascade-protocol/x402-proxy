@@ -251,7 +251,7 @@ export const mcpAddCommand = buildCommand<McpAddFlags, [name: string, url: strin
 
       prompts.log.step("Try your first request:");
       prompts.log.message(
-        `  ${pc.cyan("$ npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi")}`,
+        `  ${pc.cyan(`$ npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user`)}`,
       );
       prompts.log.message(
         `  ${pc.dim("Run")} ${pc.cyan("npx x402-proxy")} ${pc.dim("to see your wallet and balance")}`,

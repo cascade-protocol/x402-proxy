@@ -5,7 +5,7 @@
 ## Quick Start
 
 ```bash
-npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi
+npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user
 ```
 
 That's it. The endpoint returns 402, x402-proxy pays and streams the response.
@@ -52,14 +52,14 @@ openclaw mcp set surf '{"command":"npx","args":["-y","x402-proxy","mcp","https:/
 Works like curl. Response body streams to stdout, payment info goes to stderr.
 
 ```bash
-# GET request
-$ npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi
+# POST request
+$ npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user
 
 # POST with body and headers (curl-style short flags: -X, -H, -d)
 $ npx x402-proxy -X POST \
   -H "Content-Type: application/json" \
   -d '{"url":"https://x402.org"}' \
-  https://web.surf.cascade.fyi/v1/crawl
+  https://surf.cascade.fyi/api/v1/web/crawl
 
 # Force a specific network
 $ npx x402-proxy --network base https://api.example.com/data
@@ -71,7 +71,7 @@ $ npx x402-proxy --verbose https://api.example.com/data
 $ npx x402-proxy --protocol mpp \
   -X POST -H "Content-Type: application/json" \
   -d '{"model":"minimax/minimax-m2.5","stream":true,"messages":[{"role":"user","content":"Hello"}]}' \
-  https://inference.surf.cascade.fyi/v1/chat/completions
+  https://surf.cascade.fyi/api/v1/inference/completions
 
 # Pipe-safe
 $ npx x402-proxy https://api.example.com/data | jq '.results'

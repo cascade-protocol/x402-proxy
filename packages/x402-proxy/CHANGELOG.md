@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.4] - 2026-03-27
+
+### Fixed
+- All example URLs migrated from legacy individual service subdomains (`twitter.surf.cascade.fyi`, `web.surf.cascade.fyi`, `inference.surf.cascade.fyi`) to unified `surf.cascade.fyi/api/v1/` endpoints across CLI help text, README, SKILL.md, and OpenClaw plugin docs
+
 ## [0.9.3] - 2026-03-26
 
 ### Fixed
@@ -295,7 +300,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.3...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.4...HEAD
+[0.9.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.0...v0.9.1

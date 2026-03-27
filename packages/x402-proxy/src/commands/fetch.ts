@@ -43,8 +43,8 @@ export const fetchCommand = buildCommand<FetchFlags, [url?: string], CommandCont
     fullDescription: `Make a paid HTTP request. Payment is automatic when the server returns 402.
 
 Examples:
-  $ x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi
-  $ x402-proxy -X POST -d '{"url":"https://x402.org"}' https://web.surf.cascade.fyi/v1/crawl
+  $ x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user
+  $ x402-proxy -X POST -d '{"url":"https://x402.org"}' https://surf.cascade.fyi/api/v1/web/crawl
   $ x402-proxy https://api.example.com/data | jq '.results'`,
   },
   parameters: {
@@ -153,7 +153,9 @@ Examples:
         console.log();
         console.log(
           pc.dim("  try: ") +
-            pc.cyan("$ npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi"),
+            pc.cyan(
+              `$ npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user`,
+            ),
         );
         console.log();
         console.log(pc.dim("  https://github.com/cascade-protocol/x402-proxy"));

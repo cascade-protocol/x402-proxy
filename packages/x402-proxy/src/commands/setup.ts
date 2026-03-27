@@ -172,7 +172,7 @@ export async function runSetup(opts?: {
 
   prompts.log.step("Try your first request:");
   prompts.log.message(
-    `  ${pc.cyan("$ npx x402-proxy https://twitter.surf.cascade.fyi/users/cascade_fyi")}`,
+    `  ${pc.cyan(`$ npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user`)}`,
   );
 
   prompts.outro(pc.green("Setup complete!"));

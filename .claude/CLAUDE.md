@@ -110,7 +110,7 @@ All commands run from the repo root. Always `pnpm build` first.
 ### CLI smoke test
 ```bash
 # Direct HTTP request (single process, no concurrency concerns)
-node packages/x402-proxy/dist/bin/cli.js https://twitter.surf.cascade.fyi/users/cascade_fyi --network solana
+node packages/x402-proxy/dist/bin/cli.js -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user --network solana
 
 # Wallet info
 node packages/x402-proxy/dist/bin/cli.js wallet info
