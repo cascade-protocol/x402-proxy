@@ -122,7 +122,7 @@ The model list on `surf.cascade.fyi` changes over time. Fetch the current catalo
 
 ```bash
 npx x402-proxy --protocol mpp --network solana \
-  https://surf.cascade.fyi/api/v1/inference/models
+  https://surf.cascade.fyi/api/v1/inference/v1/models
 ```
 
 Then update the `models` array in your plugin config accordingly.

@@ -71,7 +71,7 @@ $ npx x402-proxy --verbose https://api.example.com/data
 $ npx x402-proxy --protocol mpp \
   -X POST -H "Content-Type: application/json" \
   -d '{"model":"minimax/minimax-m2.5","stream":true,"messages":[{"role":"user","content":"Hello"}]}' \
-  https://surf.cascade.fyi/api/v1/inference/completions
+  https://surf.cascade.fyi/api/v1/inference/v1/chat/completions
 
 # Pipe-safe
 $ npx x402-proxy https://api.example.com/data | jq '.results'
