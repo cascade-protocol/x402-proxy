@@ -1,16 +1,21 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MppProxyHandler, X402ProxyHandler } from "../handler.js";
-import { createMppProxyHandler, extractTxSignature, TEMPO_NETWORK } from "../handler.js";
+import { extractTxSignature, TEMPO_NETWORK } from "../handler.js";
 import { appendHistory } from "../history.js";
 import type { ResolvedProviderConfig } from "./defaults.js";
 import { type ModelEntry, parseMppAmount, paymentAmount, SOL_MAINNET } from "./tools.js";
 
+const debug = process.env.X402_PROXY_DEBUG === "1";
+function dbg(msg: string): void {
+  if (debug) process.stderr.write(`[x402-proxy] ${msg}\n`);
+}
+
 export type InferenceProxyRouteOptions = {
   providers: ResolvedProviderConfig[];
   getX402Proxy: () => X402ProxyHandler | null;
+  getMppHandler: () => MppProxyHandler | null;
   getWalletAddress: () => string | null;
   getWalletAddressForNetwork?: (network: string) => string | null;
-  getEvmKey: () => string | null;
   historyPath: string;
   allModels: Pick<ModelEntry, "provider" | "id">[];
   logger: { info: (msg: string) => void; error: (msg: string) => void };
@@ -22,9 +27,9 @@ export function createInferenceProxyRouteHandler(
   const {
     providers,
     getX402Proxy,
+    getMppHandler,
     getWalletAddress,
     getWalletAddressForNetwork,
-    getEvmKey,
     historyPath,
     allModels,
     logger,
@@ -59,6 +64,7 @@ export function createInferenceProxyRouteHandler(
     const normalizedPath = pathSuffix.startsWith("/") ? pathSuffix : `/${pathSuffix}`;
     const upstreamUrl = `${upstreamBase}${normalizedPath}${url.search}`;
 
+    dbg(`${req.method} ${url.pathname} -> ${upstreamUrl}`);
     logger.info(`proxy: intercepting ${upstreamUrl.substring(0, 80)}`);
 
     const chunks: Buffer[] = [];
@@ -122,8 +128,8 @@ export function createInferenceProxyRouteHandler(
       const wantsStreaming = isLlmEndpoint && /"stream"\s*:\s*true/.test(body);
 
       if (useMpp) {
-        const evmKey = getEvmKey();
-        if (!evmKey) {
+        const mpp = getMppHandler();
+        if (!mpp) {
           res.writeHead(503, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -138,7 +144,6 @@ export function createInferenceProxyRouteHandler(
         }
         const mppWalletAddress = getWalletAddressForNetwork?.(TEMPO_NETWORK) ?? walletAddress;
         return await handleMppRequest({
-          req,
           res,
           upstreamUrl,
           requestInit,
@@ -150,8 +155,7 @@ export function createInferenceProxyRouteHandler(
           wantsStreaming,
           isMessagesApi,
           startMs,
-          evmKey,
-          mppSessionBudget: provider.mppSessionBudget,
+          mpp,
         });
       }
 
@@ -488,7 +492,6 @@ export function createSseTracker() {
 }
 
 type HandleMppRequestOptions = {
-  req: IncomingMessage;
   res: ServerResponse;
   upstreamUrl: string;
   requestInit: RequestInit;
@@ -500,21 +503,11 @@ type HandleMppRequestOptions = {
   wantsStreaming: boolean;
   isMessagesApi: boolean;
   startMs: number;
-  evmKey: string;
-  mppSessionBudget: string;
+  mpp: MppProxyHandler;
 };
-
-async function closeMppSession(handler: MppProxyHandler): Promise<void> {
-  try {
-    await handler.close();
-  } catch {
-    // best effort: request already completed
-  }
-}
 
 export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<boolean> {
   const {
-    req,
     res,
     upstreamUrl,
     requestInit,
@@ -526,11 +519,8 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     wantsStreaming,
     isMessagesApi,
     startMs,
-    evmKey,
-    mppSessionBudget,
+    mpp,
   } = opts;
-
-  const mpp = await createMppProxyHandler({ evmKey, maxDeposit: mppSessionBudget });
 
   try {
     if (wantsStreaming) {
@@ -541,7 +531,9 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
       });
 
       const sse = createSseTracker();
+      dbg(`mpp.sse() calling ${upstreamUrl}`);
       const stream = await mpp.sse(upstreamUrl, requestInit);
+      dbg("mpp.sse() resolved, iterating stream");
       if (isMessagesApi) {
         for await (const chunk of stream) {
           const text = String(chunk);
@@ -560,17 +552,19 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
         }
         res.write("data: [DONE]\n\n");
       }
+      dbg(
+        `stream done, ${sse.result ? `${sse.result.model} ${sse.result.inputTokens}+${sse.result.outputTokens}t` : "no usage"}`,
+      );
       res.end();
-      mpp.shiftPayment(); // skip session-open marker pushed by sse()
-      const payment = mpp.shiftPayment(); // get the close receipt
+      mpp.shiftPayment(); // discard session-open marker pushed by sse()
+      // Per-request amount is not available for session-based streaming;
+      // the session stays open for reuse and settles on shutdown.
       appendInferenceHistory({
         historyPath,
         allModels,
         walletAddress,
-        paymentNetwork: payment?.network ?? TEMPO_NETWORK,
+        paymentNetwork: TEMPO_NETWORK,
         paymentTo: undefined,
-        tx: payment?.receipt?.reference ?? payment?.channelId,
-        amount: parseMppAmount(payment?.amount),
         thinkingMode,
         usage: sse.result,
         durationMs: Date.now() - startMs,
@@ -629,6 +623,7 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     });
     return true;
   } catch (err) {
+    dbg(`mpp error: ${String(err)}`);
     logger.error(`mpp: fetch threw: ${String(err)}`);
     appendHistory(historyPath, {
       t: Date.now(),
@@ -648,14 +643,10 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
         "payment_failed",
         isMessagesApi,
       );
-    }
-    return true;
-  } finally {
-    await closeMppSession(mpp);
-    if (!res.writableEnded) {
+    } else if (!res.writableEnded) {
       res.end();
     }
-    req.resume();
+    return true;
   }
 }
 

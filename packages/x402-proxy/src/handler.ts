@@ -139,11 +139,14 @@ export async function createMppProxyHandler(opts: {
 }): Promise<MppProxyHandler> {
   const { Mppx, tempo } = await import("mppx/client");
   const { privateKeyToAccount } = await import("viem/accounts");
+  const { saveSession, clearSession } = await import("./lib/config.js");
 
   const account = privateKeyToAccount(opts.evmKey as `0x${string}`);
   const maxDeposit = opts.maxDeposit ?? "1";
   const paymentQueue: MppPaymentInfo[] = [];
   let lastChallengeAmount: string | undefined;
+
+  const debug = process.env.X402_PROXY_DEBUG === "1";
 
   const mppx = Mppx.create({
     methods: [tempo({ account, maxDeposit })],
@@ -157,12 +160,26 @@ export async function createMppProxyHandler(opts: {
     },
   });
 
+  const payerAddress = account.address;
+
+  function injectPayerHeader(init?: RequestInit): RequestInit {
+    const headers = new Headers(init?.headers);
+    headers.set("X-Payer-Address", payerAddress);
+    return { ...init, headers };
+  }
+
   // Lazy session creation - only needed for SSE streaming
   let session: ReturnType<typeof tempo.session> | undefined;
+  let persistedChannelId: string | undefined;
 
   return {
+    // Non-streaming uses stateless one-shot charges (not sessions) - intentional.
+    // Each fetch() handles its own 402 challenge/response cycle independently.
     async fetch(input: string | URL, init?: RequestInit): Promise<Response> {
-      const response = await mppx.fetch(typeof input === "string" ? input : input.toString(), init);
+      const response = await mppx.fetch(
+        typeof input === "string" ? input : input.toString(),
+        injectPayerHeader(init),
+      );
 
       // Extract payment info from Payment-Receipt header
       const receiptHeader = response.headers.get("Payment-Receipt");
@@ -193,7 +210,24 @@ export async function createMppProxyHandler(opts: {
     async sse(input: string | URL, init?: RequestInit): Promise<AsyncIterable<string>> {
       session ??= tempo.session({ account, maxDeposit });
       const url = typeof input === "string" ? input : input.toString();
-      const iterable = await session.sse(url, init as Parameters<typeof session.sse>[1]);
+      const iterable = await session.sse(
+        url,
+        injectPayerHeader(init) as Parameters<typeof session.sse>[1],
+      );
+
+      // Persist channelId for tracking. The server includes channelId in 402
+      // challenges for returning payers, so mppx auto-recovers on restart
+      // via tryRecoverChannel() without any client-side injection.
+      if (session.channelId && session.channelId !== persistedChannelId) {
+        persistedChannelId = session.channelId;
+        if (debug) process.stderr.write(`[x402-proxy] channelId: ${persistedChannelId}\n`);
+        try {
+          saveSession({ channelId: session.channelId, createdAt: new Date().toISOString() });
+        } catch {
+          // Non-critical
+        }
+      }
+
       paymentQueue.push({ protocol: "mpp", network: TEMPO_NETWORK, intent: "session" });
       return iterable;
     },
@@ -203,6 +237,11 @@ export async function createMppProxyHandler(opts: {
     async close(): Promise<void> {
       if (session?.opened) {
         const receipt = await session.close();
+        try {
+          clearSession();
+        } catch {
+          // Non-critical
+        }
         if (receipt) {
           // spent is in USDC base units (6 decimals)
           const spentUsdc = receipt.spent

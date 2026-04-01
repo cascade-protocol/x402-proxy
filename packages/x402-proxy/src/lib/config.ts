@@ -95,6 +95,42 @@ export function saveConfig(config: ProxyConfig): void {
   fs.writeFileSync(p, stringifyYaml(config), "utf-8");
 }
 
+// --- MPP session persistence ---
+
+export type StoredSession = {
+  channelId: string;
+  createdAt: string;
+};
+
+export function getSessionPath(): string {
+  return path.join(getConfigDir(), "session.json");
+}
+
+export function loadStoredSession(): StoredSession | null {
+  const p = getSessionPath();
+  if (!fs.existsSync(p)) return null;
+  try {
+    const data = JSON.parse(fs.readFileSync(p, "utf-8"));
+    if (typeof data.channelId === "string") return data as StoredSession;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveSession(session: StoredSession): void {
+  ensureConfigDir();
+  fs.writeFileSync(getSessionPath(), JSON.stringify(session, null, 2), "utf-8");
+}
+
+export function clearSession(): void {
+  try {
+    fs.unlinkSync(getSessionPath());
+  } catch {
+    // file may not exist
+  }
+}
+
 export function isConfigured(): boolean {
   if (process.env.X402_PROXY_WALLET_MNEMONIC) return true;
   if (process.env.X402_PROXY_WALLET_EVM_KEY) return true;

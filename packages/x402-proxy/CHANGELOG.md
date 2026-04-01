@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.4] - 2026-04-01
+
+### Fixed
+- MPP sessions now reuse a single handler across requests instead of creating a new one per request - eliminates redundant escrow deposits and wasted USDC
+- MPP sessions properly settle on process shutdown (`serve` command and OpenClaw plugin both call `close()` on SIGTERM/stop)
+- MPP channelId persisted to `~/.config/x402-proxy/session.json` for tracking; cleared on session close
+
+### Added
+- `--debug` global CLI flag - sets `X402_PROXY_DEBUG=1` for verbose stderr logging of MPP SSE lifecycle, channelId, and proxy routing
+- Debug trace points in inference proxy: upstream routing, SSE start/end, usage stats, errors
+
+### Changed
+- Upgraded `mppx` from ^0.4.9 to ^0.5.1
+- MPP requests now send `X-Payer-Address` header so the server can include the payer's existing `channelId` in 402 challenges, enabling cross-restart session recovery
+- Inference proxy no longer accepts `getEvmKey` option - receives pre-built `getMppHandler` instead
+
 ## [0.10.3] - 2026-04-01
 
 ### Fixed
@@ -351,7 +367,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.4...HEAD
+[0.10.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.3...v0.10.4
+[0.10.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.4...v0.10.0

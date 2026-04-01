@@ -1,7 +1,7 @@
 import { once } from "node:events";
 import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import { buildCommand, type CommandContext } from "@stricli/core";
-import { createX402ProxyHandler } from "../handler.js";
+import { createMppProxyHandler, createX402ProxyHandler } from "../handler.js";
 import { getHistoryPath, loadConfig } from "../lib/config.js";
 import { dim, error, info, isTTY, success } from "../lib/output.js";
 import { buildX402Client, resolveWallet, type WalletResolution } from "../lib/resolve-wallet.js";
@@ -132,6 +132,9 @@ export async function startServeServer(
     spendLimitPerTx: config?.spendLimitPerTx,
   });
   const x402Proxy = createX402ProxyHandler({ client: x402Client });
+  const mppHandler = wallet.evmKey
+    ? await createMppProxyHandler({ evmKey: wallet.evmKey, maxDeposit: configuredMppBudget })
+    : null;
   const { providers, models } = resolveProviders({
     protocol: resolvedProtocol,
     mppSessionBudget: configuredMppBudget,
@@ -148,9 +151,9 @@ export async function startServeServer(
   const routeHandler = createInferenceProxyRouteHandler({
     providers,
     getX402Proxy: () => x402Proxy,
+    getMppHandler: () => mppHandler,
     getWalletAddress: () => wallet.solanaAddress ?? wallet.evmAddress ?? null,
     getWalletAddressForNetwork: (network) => walletAddressForNetwork(wallet, network),
-    getEvmKey: () => wallet.evmKey ?? null,
     historyPath: getHistoryPath(),
     allModels: models,
     logger: {
@@ -185,6 +188,13 @@ export async function startServeServer(
     server,
     port,
     close: async () => {
+      if (mppHandler) {
+        try {
+          await mppHandler.close();
+        } catch {
+          // best effort
+        }
+      }
       if (!server.listening) return;
       server.close();
       await once(server, "close");

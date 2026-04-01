@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { createKeyPairSignerFromBytes, type KeyPairSigner } from "@solana/kit";
 import { x402Client } from "@x402/fetch";
 import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
-import { createX402ProxyHandler, type X402ProxyHandler } from "../handler.js";
+import {
+  createMppProxyHandler,
+  createX402ProxyHandler,
+  type MppProxyHandler,
+  type X402ProxyHandler,
+} from "../handler.js";
 import { getHistoryPath } from "../lib/config.js";
 import { OptimizedSvmScheme } from "../lib/optimized-svm-scheme.js";
 import { resolveWallet } from "../lib/resolve-wallet.js";
@@ -50,6 +55,7 @@ export function register(api: OpenClawPluginApi): void {
   let evmWalletAddress: string | null = null;
   let signerRef: KeyPairSigner | null = null;
   let proxyRef: X402ProxyHandler | null = null;
+  let mppHandlerRef: MppProxyHandler | null = null;
   let evmKeyRef: string | null = null;
   let walletLoadPromise: Promise<void> | null = null;
 
@@ -61,10 +67,10 @@ export function register(api: OpenClawPluginApi): void {
   const handler = createInferenceProxyRouteHandler({
     providers,
     getX402Proxy: () => proxyRef,
+    getMppHandler: () => mppHandlerRef,
     getWalletAddress: () => solanaWalletAddress ?? evmWalletAddress,
     getWalletAddressForNetwork: (network) =>
       addressForNetwork(evmWalletAddress, solanaWalletAddress, network),
-    getEvmKey: () => evmKeyRef,
     historyPath,
     allModels,
     logger: api.logger,
@@ -122,6 +128,18 @@ export function register(api: OpenClawPluginApi): void {
           proxyRef = null;
         }
 
+        if (evmKeyRef) {
+          const maxBudget = Math.max(
+            ...providers.map((p) => Number(p.mppSessionBudget) || 0.5),
+          ).toString();
+          mppHandlerRef = await createMppProxyHandler({
+            evmKey: evmKeyRef,
+            maxDeposit: maxBudget,
+          });
+        } else {
+          mppHandlerRef = null;
+        }
+
         api.logger.info(
           `wallets: solana=${solanaWalletAddress ?? "missing"} evm=${evmWalletAddress ?? "missing"}`,
         );
@@ -139,7 +157,15 @@ export function register(api: OpenClawPluginApi): void {
     async start() {
       await ensureWalletLoaded();
     },
-    async stop() {},
+    async stop() {
+      if (mppHandlerRef) {
+        try {
+          await mppHandlerRef.close();
+        } catch {
+          // best effort
+        }
+      }
+    },
   });
 
   const toolCtx = {

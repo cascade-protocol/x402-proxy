@@ -20,6 +20,8 @@ for (let i = 0; i < rawArgs.length; i++) {
     const dir = resolve(a.slice("--config-dir=".length));
     process.env.XDG_CONFIG_HOME = dir;
     process.env.X402_PROXY_CONFIG_DIR_OVERRIDE = dir;
+  } else if (a === "--debug") {
+    process.env.X402_PROXY_DEBUG = "1";
   } else {
     args.push(a);
   }
