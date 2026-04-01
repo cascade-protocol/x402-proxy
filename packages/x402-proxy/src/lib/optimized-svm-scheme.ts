@@ -9,28 +9,23 @@ import {
   mainnet,
   partiallySignTransactionMessageWithSigners,
   pipe,
-  prependTransactionMessageInstruction,
   SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR,
+  setTransactionMessageComputeUnitLimit,
+  setTransactionMessageComputeUnitPrice,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
   type TransactionSigner,
 } from "@solana/kit";
 import {
-  getSetComputeUnitLimitInstruction,
-  setTransactionMessageComputeUnitPrice,
-} from "@solana-program/compute-budget";
-import { TOKEN_PROGRAM_ADDRESS } from "@solana-program/token";
-import {
-  fetchMint,
   findAssociatedTokenPda,
   getTransferCheckedInstruction,
-  TOKEN_2022_PROGRAM_ADDRESS,
-} from "@solana-program/token-2022";
+  TOKEN_PROGRAM_ADDRESS,
+} from "@solana-program/token";
 import type { PaymentRequirements, SchemeNetworkClient } from "@x402/core/types";
 
 const MEMO_PROGRAM_ADDRESS: Address = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" as Address;
 const COMPUTE_UNIT_LIMIT = 20_000;
-const COMPUTE_UNIT_PRICE_MICROLAMPORTS = 1;
+const COMPUTE_UNIT_PRICE_MICROLAMPORTS = 1n;
 
 const USDC_MINT: Address = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" as Address;
 const USDC_DECIMALS = 6;
@@ -107,49 +102,33 @@ export class OptimizedSvmScheme implements SchemeNetworkClient {
 
   async createPaymentPayload(x402Version: number, paymentRequirements: PaymentRequirements) {
     const rpc = this.rpc;
-
     const asset = paymentRequirements.asset as Address;
 
-    let tokenProgramAddress: Address;
-    let decimals: number;
-    if (asset === USDC_MINT) {
-      tokenProgramAddress = TOKEN_PROGRAM_ADDRESS;
-      decimals = USDC_DECIMALS;
-    } else {
-      const tokenMint = await fetchMint(rpc, asset);
-      tokenProgramAddress = tokenMint.programAddress;
-      if (
-        tokenProgramAddress !== TOKEN_PROGRAM_ADDRESS &&
-        tokenProgramAddress !== TOKEN_2022_PROGRAM_ADDRESS
-      ) {
-        throw new Error("Asset was not created by a known token program");
-      }
-      decimals = tokenMint.data.decimals;
+    if (asset !== USDC_MINT) {
+      throw new Error(`Unsupported asset: ${asset}. Only USDC is supported.`);
     }
 
-    const [sourceATA] = await findAssociatedTokenPda({
-      mint: asset,
-      owner: this.signer.address,
-      tokenProgram: tokenProgramAddress,
-    });
-
-    const [destinationATA] = await findAssociatedTokenPda({
-      mint: asset,
-      owner: paymentRequirements.payTo as Address,
-      tokenProgram: tokenProgramAddress,
-    });
-
-    const transferIx = getTransferCheckedInstruction(
-      {
-        source: sourceATA,
+    const [[sourceATA], [destinationATA]] = await Promise.all([
+      findAssociatedTokenPda({
         mint: asset,
-        destination: destinationATA,
-        authority: this.signer,
-        amount: BigInt(paymentRequirements.amount),
-        decimals,
-      },
-      { programAddress: tokenProgramAddress },
-    );
+        owner: this.signer.address,
+        tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      }),
+      findAssociatedTokenPda({
+        mint: asset,
+        owner: paymentRequirements.payTo as Address,
+        tokenProgram: TOKEN_PROGRAM_ADDRESS,
+      }),
+    ]);
+
+    const transferIx = getTransferCheckedInstruction({
+      source: sourceATA,
+      mint: asset,
+      destination: destinationATA,
+      authority: this.signer,
+      amount: BigInt(paymentRequirements.amount),
+      decimals: USDC_DECIMALS,
+    });
 
     const feePayer = paymentRequirements.extra?.feePayer as Address;
     if (!feePayer) {
@@ -172,12 +151,8 @@ export class OptimizedSvmScheme implements SchemeNetworkClient {
     const tx = pipe(
       createTransactionMessage({ version: 0 }),
       (tx) => setTransactionMessageComputeUnitPrice(COMPUTE_UNIT_PRICE_MICROLAMPORTS, tx),
+      (tx) => setTransactionMessageComputeUnitLimit(COMPUTE_UNIT_LIMIT, tx),
       (tx) => setTransactionMessageFeePayer(feePayer, tx),
-      (tx) =>
-        prependTransactionMessageInstruction(
-          getSetComputeUnitLimitInstruction({ units: COMPUTE_UNIT_LIMIT }),
-          tx,
-        ),
       (tx) => appendTransactionMessageInstructions([transferIx, memoIx], tx),
       (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
     );

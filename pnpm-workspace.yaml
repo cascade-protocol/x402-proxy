@@ -3,6 +3,7 @@ packages:
 
 onlyBuiltDependencies:
   - '@whiskeysockets/baileys'
+  - esbuild
   - koffi
   - protobufjs
   - sharp

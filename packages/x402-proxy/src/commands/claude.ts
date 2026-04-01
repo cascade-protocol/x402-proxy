@@ -100,7 +100,7 @@ Examples:
       env: {
         ...process.env,
         ANTHROPIC_BASE_URL: `http://127.0.0.1:${started.port}`,
-        ANTHROPIC_API_KEY: "x402-proxy",
+        ANTHROPIC_MODEL: flags.model,
         ANTHROPIC_CUSTOM_MODEL_OPTION: flags.model,
       },
     });
