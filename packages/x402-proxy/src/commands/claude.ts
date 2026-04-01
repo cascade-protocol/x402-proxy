@@ -87,11 +87,11 @@ Examples:
     const started = await startServeServer({
       upstreamUrl: flags.upstream ?? DEFAULT_SURF_UPSTREAM_URL,
       port: Number(flags.port),
-      protocol: flags.protocol,
+      protocol: flags.protocol ?? "mpp",
       network: flags.network,
       evmKey: flags.evmKey,
       solanaKey: flags.solanaKey,
-      quiet: false,
+      quiet: true,
     });
 
     const claudeArgs = normalizeClaudeArgs(rawClaudeArgs);
