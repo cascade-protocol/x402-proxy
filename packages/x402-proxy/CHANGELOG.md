@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.7] - 2026-04-01
+
+### Added
+- `claude` and `claude --model` shown in default `npx x402-proxy` commands output
+- `claude --help` lists available models and usage examples
+
 ## [0.10.6] - 2026-04-01
 
 ### Fixed
@@ -387,7 +393,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.6...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.7...HEAD
+[0.10.7]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.6...v0.10.7
 [0.10.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.5...v0.10.6
 [0.10.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.4...v0.10.5
 [0.10.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.3...v0.10.4
