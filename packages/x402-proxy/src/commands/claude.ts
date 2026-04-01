@@ -6,6 +6,16 @@ import { startServeServer } from "./serve.js";
 
 const DEFAULT_MODEL = "stepfun/step-3.5-flash";
 
+const AVAILABLE_MODELS = [
+  "stepfun/step-3.5-flash",
+  "minimax/minimax-m2.5",
+  "minimax/minimax-m2.7",
+  "z-ai/glm-5",
+  "z-ai/glm-5-turbo",
+  "moonshotai/kimi-k2.5",
+];
+const modelList = AVAILABLE_MODELS.map((id) => `    ${id}`).join("\n");
+
 type ClaudeFlags = {
   model: string;
   upstream: string | undefined;
@@ -23,12 +33,22 @@ function normalizeClaudeArgs(args: string[]): string[] {
 export const claudeCommand = buildCommand<ClaudeFlags, string[], CommandContext>({
   docs: {
     brief: "Run Claude Code through a paid local proxy",
-    fullDescription: `Start a local x402-proxy server and launch Claude Code with ANTHROPIC_BASE_URL pointed at it.
+    fullDescription: `Starts a local x402-proxy server and launches Claude Code with
+ANTHROPIC_BASE_URL pointed at it. All inference requests go through
+the proxy, which handles payments automatically via MPP.
 
-Examples:
-  $ x402-proxy claude
-  $ x402-proxy claude --model z-ai/glm-5
-  $ x402-proxy claude -- --print "explain this codebase"`,
+Usage:
+  $ x402-proxy claude                           Start with default model
+  $ x402-proxy claude --model z-ai/glm-5        Use a specific model
+  $ x402-proxy claude -- --print "explain this" Pass args to Claude Code
+  $ x402-proxy claude -- -p "summarize *.ts"    Print mode (non-interactive)
+
+Available models (via surf.cascade.fyi):
+${modelList}
+
+The --model value is passed as ANTHROPIC_MODEL and ANTHROPIC_CUSTOM_MODEL_OPTION
+to Claude Code. Any model supported by the upstream endpoint will work, even if
+not listed above.`,
   },
   parameters: {
     flags: {

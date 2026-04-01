@@ -147,6 +147,10 @@ Examples:
         console.log(
           `    ${pc.cyan("$ npx x402-proxy mcp <url>")}          MCP proxy for AI agents`,
         );
+        console.log(
+          `    ${pc.cyan("$ npx x402-proxy claude")}             Run Claude Code via paid proxy`,
+        );
+        console.log(`    ${pc.cyan("$ npx x402-proxy claude --model <id>")} Use a specific model`);
         console.log(`    ${pc.cyan("$ npx x402-proxy setup")}              Reconfigure wallet`);
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet")}             Addresses and balances`);
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet history")}     Full payment history`);
@@ -170,6 +174,9 @@ Examples:
         console.log(`    ${pc.cyan("$ npx x402-proxy <url>")}              Fetch a paid API`);
         console.log(
           `    ${pc.cyan("$ npx x402-proxy mcp <url>")}          MCP proxy for AI agents`,
+        );
+        console.log(
+          `    ${pc.cyan("$ npx x402-proxy claude")}             Run Claude Code via paid proxy`,
         );
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet")}             Addresses and balances`);
         console.log(`    ${pc.cyan("$ npx x402-proxy wallet history")}     Payment history`);
