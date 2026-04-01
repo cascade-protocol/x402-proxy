@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.5] - 2026-04-01
+
+### Fixed
+- `--debug` flag now works with inference proxy - route.ts debug check was captured at import time (before `cli.ts` sets the env var), so `dbg()` never fired; now evaluates lazily per call
+- `--debug` on `claude` command now shows proxy logs (sets `quiet: false`)
+- MPP `X-Payer-Address` header injection preserves headers as plain objects instead of converting to `Headers` instance, avoiding mppx headers-spreading bug that silently drops `Content-Type` on SSE requests
+
 ## [0.10.4] - 2026-04-01
 
 ### Fixed
@@ -367,7 +374,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.4...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.5...HEAD
+[0.10.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.4...v0.10.5
 [0.10.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.2...v0.10.3
 [0.10.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.1...v0.10.2
