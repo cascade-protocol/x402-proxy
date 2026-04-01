@@ -84,6 +84,7 @@ Examples:
     },
   },
   async func(flags, ...rawClaudeArgs) {
+    const debug = process.env.X402_PROXY_DEBUG === "1";
     const started = await startServeServer({
       upstreamUrl: flags.upstream ?? DEFAULT_SURF_UPSTREAM_URL,
       port: Number(flags.port),
@@ -91,7 +92,8 @@ Examples:
       network: flags.network,
       evmKey: flags.evmKey,
       solanaKey: flags.solanaKey,
-      quiet: true,
+      quiet: !debug,
+      debug,
     });
 
     const claudeArgs = normalizeClaudeArgs(rawClaudeArgs);

@@ -32,6 +32,7 @@ export type StartServeServerOptions = {
   evmKey?: string;
   solanaKey?: string;
   quiet?: boolean;
+  debug?: boolean;
 };
 
 type StartedServeServer = {
@@ -119,6 +120,7 @@ function createRequestHandler(
 export async function startServeServer(
   options: StartServeServerOptions = {},
 ): Promise<StartedServeServer> {
+  if (options.debug) options.quiet = false;
   const config = loadConfig();
   const wallet = await resolveWalletForServe(options);
   const resolvedProtocol = resolveProtocol(options.protocol ?? config?.preferredProtocol);

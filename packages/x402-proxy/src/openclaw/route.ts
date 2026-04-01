@@ -5,9 +5,8 @@ import { appendHistory } from "../history.js";
 import type { ResolvedProviderConfig } from "./defaults.js";
 import { type ModelEntry, parseMppAmount, paymentAmount, SOL_MAINNET } from "./tools.js";
 
-const debug = process.env.X402_PROXY_DEBUG === "1";
 function dbg(msg: string): void {
-  if (debug) process.stderr.write(`[x402-proxy] ${msg}\n`);
+  if (process.env.X402_PROXY_DEBUG === "1") process.stderr.write(`[x402-proxy] ${msg}\n`);
 }
 
 export type InferenceProxyRouteOptions = {

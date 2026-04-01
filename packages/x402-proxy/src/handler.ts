@@ -163,9 +163,11 @@ export async function createMppProxyHandler(opts: {
   const payerAddress = account.address;
 
   function injectPayerHeader(init?: RequestInit): RequestInit {
-    const headers = new Headers(init?.headers);
-    headers.set("X-Payer-Address", payerAddress);
-    return { ...init, headers };
+    const existing =
+      init?.headers instanceof Headers
+        ? Object.fromEntries(init.headers.entries())
+        : ((init?.headers as Record<string, string> | undefined) ?? {});
+    return { ...init, headers: { ...existing, "X-Payer-Address": payerAddress } };
   }
 
   // Lazy session creation - only needed for SSE streaming
