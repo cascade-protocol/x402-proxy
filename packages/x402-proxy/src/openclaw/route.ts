@@ -9,6 +9,24 @@ function dbg(msg: string): void {
   if (process.env.X402_PROXY_DEBUG === "1") process.stderr.write(`[x402-proxy] ${msg}\n`);
 }
 
+function createDownstreamAbort(req: IncomingMessage, res: ServerResponse) {
+  const controller = new AbortController();
+  const abort = () => {
+    if (!controller.signal.aborted) controller.abort();
+  };
+  const onReqAborted = () => abort();
+  const onResClose = () => abort();
+  req.once("aborted", onReqAborted);
+  res.once("close", onResClose);
+  return {
+    signal: controller.signal,
+    cleanup() {
+      req.off("aborted", onReqAborted);
+      res.off("close", onResClose);
+    },
+  };
+}
+
 export type InferenceProxyRouteOptions = {
   providers: ResolvedProviderConfig[];
   getX402Proxy: () => X402ProxyHandler | null;
@@ -39,6 +57,7 @@ export function createInferenceProxyRouteHandler(
     .sort((left, right) => right.baseUrl.length - left.baseUrl.length);
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
+    const downstream = createDownstreamAbort(req, res);
     const url = new URL(req.url ?? "/", "http://localhost");
     const provider = sortedProviders.find(
       (entry) => entry.baseUrl === "/" || url.pathname.startsWith(entry.baseUrl),
@@ -122,6 +141,7 @@ export function createInferenceProxyRouteHandler(
         method,
         headers,
         body: ["GET", "HEAD"].includes(method) ? undefined : body,
+        signal: downstream.signal,
       };
       const useMpp = provider.protocol === "mpp" || provider.protocol === "auto";
       const wantsStreaming = isLlmEndpoint && /"stream"\s*:\s*true/.test(body);
@@ -146,6 +166,8 @@ export function createInferenceProxyRouteHandler(
           res,
           upstreamUrl,
           requestInit,
+          abortSignal: downstream.signal,
+          isLlmEndpoint,
           walletAddress: mppWalletAddress,
           historyPath,
           logger,
@@ -183,18 +205,20 @@ export function createInferenceProxyRouteHandler(
         const paymentFrom =
           (payment?.network && getWalletAddressForNetwork?.(payment.network)) ?? walletAddress;
         const paymentNetwork = payment?.network ?? SOL_MAINNET;
-        appendHistory(historyPath, {
-          t: Date.now(),
-          ok: false,
-          kind: "x402_inference",
-          net: paymentNetwork,
-          from: paymentFrom,
-          to: payment?.payTo,
-          amount,
-          token: amount != null ? "USDC" : undefined,
-          ms: Date.now() - startMs,
-          error: "payment_required",
-        });
+        if (isLlmEndpoint) {
+          appendHistory(historyPath, {
+            t: Date.now(),
+            ok: false,
+            kind: "x402_inference",
+            net: paymentNetwork,
+            from: paymentFrom,
+            to: payment?.payTo,
+            amount,
+            token: amount != null ? "USDC" : undefined,
+            ms: Date.now() - startMs,
+            error: "payment_required",
+          });
+        }
 
         let userMessage: string;
         if (responseBody.includes("simulation") || responseBody.includes("Simulation")) {
@@ -265,18 +289,20 @@ export function createInferenceProxyRouteHandler(
 
       if (!response.body) {
         res.end();
-        appendHistory(historyPath, {
-          t: Date.now(),
-          ok: true,
-          kind: "x402_inference",
-          net: paymentNetwork,
-          from: paymentFrom,
-          to: payment?.payTo,
-          tx: txSig,
-          amount,
-          token: "USDC",
-          ms: Date.now() - startMs,
-        });
+        if (shouldAppendInferenceHistory({ isLlmEndpoint, amount })) {
+          appendHistory(historyPath, {
+            t: Date.now(),
+            ok: true,
+            kind: "x402_inference",
+            net: paymentNetwork,
+            from: paymentFrom,
+            to: payment?.payTo,
+            tx: txSig,
+            amount,
+            token: "USDC",
+            ms: Date.now() - startMs,
+          });
+        }
         return true;
       }
 
@@ -288,42 +314,54 @@ export function createInferenceProxyRouteHandler(
       const decoder = new TextDecoder();
       try {
         while (true) {
+          if (downstream.signal.aborted) {
+            await reader.cancel().catch(() => {});
+            break;
+          }
           const { done, value } = await reader.read();
           if (done) break;
           res.write(value);
           sse?.push(decoder.decode(value, { stream: true }));
+          if (isMessagesApi && sse?.sawAnthropicMessageStop) {
+            await reader.cancel().catch(() => {});
+            break;
+          }
         }
       } finally {
         reader.releaseLock();
       }
-      res.end();
+      if (!res.writableEnded) res.end();
 
-      appendInferenceHistory({
-        historyPath,
-        allModels,
-        walletAddress: paymentFrom,
-        paymentNetwork,
-        paymentTo: payment?.payTo,
-        tx: txSig,
-        amount,
-        thinkingMode,
-        usage: sse?.result,
-        durationMs: Date.now() - startMs,
-      });
+      if (shouldAppendInferenceHistory({ isLlmEndpoint, amount, usage: sse?.result })) {
+        appendInferenceHistory({
+          historyPath,
+          allModels,
+          walletAddress: paymentFrom,
+          paymentNetwork,
+          paymentTo: payment?.payTo,
+          tx: txSig,
+          amount,
+          thinkingMode,
+          usage: sse?.result,
+          durationMs: Date.now() - startMs,
+        });
+      }
       return true;
     } catch (err) {
       const msg = String(err);
       logger.error(`x402: fetch threw: ${msg}`);
       getX402Proxy()?.shiftPayment();
-      appendHistory(historyPath, {
-        t: Date.now(),
-        ok: false,
-        kind: "x402_inference",
-        net: SOL_MAINNET,
-        from: walletAddress,
-        ms: Date.now() - startMs,
-        error: msg.substring(0, 200),
-      });
+      if (isLlmEndpoint) {
+        appendHistory(historyPath, {
+          t: Date.now(),
+          ok: false,
+          kind: "x402_inference",
+          net: SOL_MAINNET,
+          from: walletAddress,
+          ms: Date.now() - startMs,
+          error: msg.substring(0, 200),
+        });
+      }
 
       let userMessage: string;
       if (msg.includes("Simulation failed") || msg.includes("simulation")) {
@@ -345,6 +383,8 @@ export function createInferenceProxyRouteHandler(
         );
       }
       return true;
+    } finally {
+      downstream.cleanup();
     }
   };
 }
@@ -374,6 +414,15 @@ export type InferenceUsage = {
   cacheWrite?: number;
 };
 
+export function shouldAppendInferenceHistory(opts: {
+  isLlmEndpoint: boolean;
+  amount?: number;
+  usage?: InferenceUsage;
+}): boolean {
+  if (!opts.isLlmEndpoint) return false;
+  return opts.amount != null || opts.usage != null;
+}
+
 export function createSseTracker() {
   let residual = "";
   // Anthropic accumulated state
@@ -382,6 +431,7 @@ export function createSseTracker() {
   let anthropicOutputTokens = 0;
   let anthropicCacheRead: number | undefined;
   let anthropicCacheWrite: number | undefined;
+  let anthropicMessageStop = false;
   // OpenAI: last data line with usage
   let lastOpenAiData = "";
   let isAnthropic = false;
@@ -413,6 +463,11 @@ export function createSseTracker() {
       isAnthropic = true;
       const u = parsed.usage as Record<string, number | null> | undefined;
       if (u?.output_tokens != null) anthropicOutputTokens = u.output_tokens;
+      return;
+    }
+    if (type === "message_stop") {
+      isAnthropic = true;
+      anthropicMessageStop = true;
       return;
     }
     // Anthropic non-streaming complete response
@@ -448,6 +503,9 @@ export function createSseTracker() {
     /** Push raw JSON payload - for MPP path (no SSE framing) */
     pushJson(text: string): void {
       processJson(text);
+    },
+    get sawAnthropicMessageStop(): boolean {
+      return anthropicMessageStop;
     },
     /** Parsed usage result, or undefined if nothing was captured */
     get result(): InferenceUsage | undefined {
@@ -494,6 +552,8 @@ type HandleMppRequestOptions = {
   res: ServerResponse;
   upstreamUrl: string;
   requestInit: RequestInit;
+  abortSignal: AbortSignal;
+  isLlmEndpoint: boolean;
   walletAddress: string;
   historyPath: string;
   logger: { info: (msg: string) => void; error: (msg: string) => void };
@@ -510,6 +570,8 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     res,
     upstreamUrl,
     requestInit,
+    abortSignal,
+    isLlmEndpoint,
     walletAddress,
     historyPath,
     logger,
@@ -533,41 +595,66 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
       dbg(`mpp.sse() calling ${upstreamUrl}`);
       const stream = await mpp.sse(upstreamUrl, requestInit);
       dbg("mpp.sse() resolved, iterating stream");
-      if (isMessagesApi) {
-        for await (const chunk of stream) {
-          const text = String(chunk);
-          let eventType = "unknown";
-          try {
-            eventType = (JSON.parse(text) as { type?: string }).type ?? "unknown";
-          } catch {}
-          res.write(`event: ${eventType}\ndata: ${text}\n\n`);
-          sse.pushJson(text);
+      const iterator = stream[Symbol.asyncIterator]();
+      let semanticComplete = false;
+      try {
+        if (isMessagesApi) {
+          while (true) {
+            if (abortSignal.aborted) break;
+            const { done, value } = await iterator.next();
+            if (done) break;
+            const text = String(value);
+            let eventType = "unknown";
+            try {
+              eventType = (JSON.parse(text) as { type?: string }).type ?? "unknown";
+            } catch {}
+            res.write(`event: ${eventType}\ndata: ${text}\n\n`);
+            sse.pushJson(text);
+            if (sse.sawAnthropicMessageStop) {
+              semanticComplete = true;
+              break;
+            }
+          }
+        } else {
+          while (true) {
+            if (abortSignal.aborted) break;
+            const { done, value } = await iterator.next();
+            if (done) break;
+            const text = String(value);
+            res.write(`data: ${text}\n\n`);
+            sse.pushJson(text);
+          }
+          if (!abortSignal.aborted) {
+            res.write("data: [DONE]\n\n");
+          }
         }
-      } else {
-        for await (const chunk of stream) {
-          const text = String(chunk);
-          res.write(`data: ${text}\n\n`);
-          sse.pushJson(text);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!(abortSignal.aborted || semanticComplete) || !msg.includes("terminated")) {
+          throw err;
         }
-        res.write("data: [DONE]\n\n");
+      } finally {
+        await iterator.return?.().catch(() => {});
       }
       dbg(
         `stream done, ${sse.result ? `${sse.result.model} ${sse.result.inputTokens}+${sse.result.outputTokens}t` : "no usage"}`,
       );
-      res.end();
+      if (!res.writableEnded) res.end();
       mpp.shiftPayment(); // discard session-open marker pushed by sse()
       // Per-request amount is not available for session-based streaming;
       // the session stays open for reuse and settles on shutdown.
-      appendInferenceHistory({
-        historyPath,
-        allModels,
-        walletAddress,
-        paymentNetwork: TEMPO_NETWORK,
-        paymentTo: undefined,
-        thinkingMode,
-        usage: sse.result,
-        durationMs: Date.now() - startMs,
-      });
+      if (shouldAppendInferenceHistory({ isLlmEndpoint, usage: sse.result })) {
+        appendInferenceHistory({
+          historyPath,
+          allModels,
+          walletAddress,
+          paymentNetwork: TEMPO_NETWORK,
+          paymentTo: undefined,
+          thinkingMode,
+          usage: sse.result,
+          durationMs: Date.now() - startMs,
+        });
+      }
       return true;
     }
 
@@ -577,15 +664,17 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     if (response.status === 402) {
       const responseBody = await response.text();
       logger.error(`mpp: payment failed, raw response: ${responseBody}`);
-      appendHistory(historyPath, {
-        t: Date.now(),
-        ok: false,
-        kind: "x402_inference",
-        net: TEMPO_NETWORK,
-        from: walletAddress,
-        ms: Date.now() - startMs,
-        error: "payment_required",
-      });
+      if (isLlmEndpoint) {
+        appendHistory(historyPath, {
+          t: Date.now(),
+          ok: false,
+          kind: "x402_inference",
+          net: TEMPO_NETWORK,
+          from: walletAddress,
+          ms: Date.now() - startMs,
+          error: "payment_required",
+        });
+      }
       writeErrorResponse(
         res,
         402,
@@ -608,31 +697,36 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     const usageTracker = createSseTracker();
     usageTracker.pushJson(responseBody);
     const payment = mpp.shiftPayment();
-    appendInferenceHistory({
-      historyPath,
-      allModels,
-      walletAddress,
-      paymentNetwork: payment?.network ?? TEMPO_NETWORK,
-      paymentTo: undefined,
-      tx: tx ?? payment?.receipt?.reference,
-      amount: parseMppAmount(payment?.amount),
-      thinkingMode,
-      usage: usageTracker.result,
-      durationMs: Date.now() - startMs,
-    });
+    const amount = parseMppAmount(payment?.amount);
+    if (shouldAppendInferenceHistory({ isLlmEndpoint, amount, usage: usageTracker.result })) {
+      appendInferenceHistory({
+        historyPath,
+        allModels,
+        walletAddress,
+        paymentNetwork: payment?.network ?? TEMPO_NETWORK,
+        paymentTo: undefined,
+        tx: tx ?? payment?.receipt?.reference,
+        amount,
+        thinkingMode,
+        usage: usageTracker.result,
+        durationMs: Date.now() - startMs,
+      });
+    }
     return true;
   } catch (err) {
     dbg(`mpp error: ${String(err)}`);
     logger.error(`mpp: fetch threw: ${String(err)}`);
-    appendHistory(historyPath, {
-      t: Date.now(),
-      ok: false,
-      kind: "x402_inference",
-      net: TEMPO_NETWORK,
-      from: walletAddress,
-      ms: Date.now() - startMs,
-      error: String(err).substring(0, 200),
-    });
+    if (isLlmEndpoint) {
+      appendHistory(historyPath, {
+        t: Date.now(),
+        ok: false,
+        kind: "x402_inference",
+        net: TEMPO_NETWORK,
+        from: walletAddress,
+        ms: Date.now() - startMs,
+        error: String(err).substring(0, 200),
+      });
+    }
     if (!res.headersSent) {
       writeErrorResponse(
         res,

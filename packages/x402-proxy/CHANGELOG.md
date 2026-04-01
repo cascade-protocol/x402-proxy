@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.6] - 2026-04-01
+
+### Fixed
+- Client disconnect now cancels upstream requests via abort signal propagation (prevents resource leaks on dropped connections)
+- Anthropic SSE streaming stops reading after `message_stop` event instead of waiting for connection close
+- Non-LLM endpoint requests (tool discovery, resource listing) no longer write empty records to inference history
+- Empty inference history records (no amount, model, tokens, or tx) filtered out when reading history
+- `formatUsdcValue()` uses `Intl.NumberFormat` for full precision up to 12 decimals instead of truncating to fixed tiers
+- Stream responses guarded against double `res.end()` calls
+
+### Changed
+- Default model for `claude` command changed from `minimax/minimax-m2.7` to `stepfun/step-3.5-flash`
+
 ## [0.10.5] - 2026-04-01
 
 ### Fixed
@@ -374,7 +387,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.5...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.6...HEAD
+[0.10.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.5...v0.10.6
 [0.10.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.4...v0.10.5
 [0.10.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.3...v0.10.4
 [0.10.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.2...v0.10.3

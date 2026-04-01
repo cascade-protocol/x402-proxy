@@ -45,6 +45,18 @@ export type TxRecord = {
   meta?: Record<string, string | number>;
 };
 
+function isMeaningfulInferenceRecord(record: TxRecord): boolean {
+  if (record.kind !== "x402_inference") return true;
+  if (!record.ok) return true;
+  return (
+    record.amount != null ||
+    record.model != null ||
+    record.inputTokens != null ||
+    record.outputTokens != null ||
+    record.tx != null
+  );
+}
+
 // --- File operations ---
 
 export function appendHistory(historyPath: string, record: TxRecord): void {
@@ -74,7 +86,8 @@ export function readHistory(historyPath: string): TxRecord[] {
       try {
         const parsed = JSON.parse(line);
         if (typeof parsed.t !== "number" || typeof parsed.kind !== "string") return [];
-        return [parsed as TxRecord];
+        const record = parsed as TxRecord;
+        return isMeaningfulInferenceRecord(record) ? [record] : [];
       } catch {
         return [];
       }
@@ -109,12 +122,12 @@ export function calcSpend(records: TxRecord[]): {
 
 // --- Formatting ---
 
-/** Format a USDC value with adaptive precision (no token suffix). */
 export function formatUsdcValue(amount: number): string {
-  if (amount >= 0.01) return amount.toFixed(2);
-  if (amount >= 0.001) return amount.toFixed(3);
-  if (amount >= 0.0001) return amount.toFixed(4);
-  return amount.toFixed(6);
+  return new Intl.NumberFormat("en-US", {
+    useGrouping: false,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 12,
+  }).format(amount);
 }
 
 export function formatAmount(amount: number, token: string): string {

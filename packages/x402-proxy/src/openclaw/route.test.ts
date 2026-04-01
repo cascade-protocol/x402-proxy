@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { describe, expect, it } from "vitest";
-import { createSseTracker, writeErrorResponse } from "./route.js";
+import { createSseTracker, shouldAppendInferenceHistory, writeErrorResponse } from "./route.js";
 
 // ── createSseTracker ────────────────────────────────────────────────
 
@@ -125,6 +125,7 @@ describe("createSseTracker", () => {
         cacheRead: undefined,
         cacheWrite: undefined,
       });
+      expect(tracker.sawAnthropicMessageStop).toBe(true);
     });
 
     it("extracts cache fields from message_start", () => {
@@ -189,6 +190,7 @@ describe("createSseTracker", () => {
         cacheRead: undefined,
         cacheWrite: undefined,
       });
+      expect(tracker.sawAnthropicMessageStop).toBe(true);
     });
   });
 
@@ -290,6 +292,23 @@ describe("createSseTracker", () => {
       );
       expect(tracker.result?.inputTokens).toBe(5);
     });
+  });
+});
+
+describe("shouldAppendInferenceHistory", () => {
+  it("skips non-LLM traffic and empty successful placeholders", () => {
+    expect(shouldAppendInferenceHistory({ isLlmEndpoint: false })).toBe(false);
+    expect(shouldAppendInferenceHistory({ isLlmEndpoint: true })).toBe(false);
+  });
+
+  it("keeps usage-bearing and priced LLM requests", () => {
+    expect(shouldAppendInferenceHistory({ isLlmEndpoint: true, amount: 0.0133 })).toBe(true);
+    expect(
+      shouldAppendInferenceHistory({
+        isLlmEndpoint: true,
+        usage: { model: "stepfun/step-3.5-flash", inputTokens: 10, outputTokens: 2 },
+      }),
+    ).toBe(true);
   });
 });
 

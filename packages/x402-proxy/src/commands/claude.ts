@@ -4,7 +4,7 @@ import { dim, error } from "../lib/output.js";
 import { DEFAULT_SURF_UPSTREAM_URL } from "../openclaw/defaults.js";
 import { startServeServer } from "./serve.js";
 
-const DEFAULT_MODEL = "minimax/minimax-m2.7";
+const DEFAULT_MODEL = "stepfun/step-3.5-flash";
 
 type ClaudeFlags = {
   model: string;
@@ -34,7 +34,7 @@ Examples:
     flags: {
       model: {
         kind: "parsed",
-        brief: "Model to use (default: minimax/minimax-m2.7)",
+        brief: "Model to use (default: stepfun/step-3.5-flash)",
         parse: String,
         default: DEFAULT_MODEL,
       },
