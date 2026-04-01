@@ -1,10 +1,12 @@
 declare const __VERSION__: string;
 
 import { buildApplication, buildRouteMap } from "@stricli/core";
+import { claudeCommand } from "./commands/claude.js";
 import { configSetCommand, configShowCommand, configUnsetCommand } from "./commands/config.js";
 import { fetchCommand } from "./commands/fetch.js";
 import { mcpCommand } from "./commands/mcp.js";
 import { mcpAddCommand } from "./commands/mcp-add.js";
+import { serveCommand } from "./commands/serve.js";
 import { setupCommand } from "./commands/setup.js";
 import { statusCommand } from "./commands/status.js";
 import { walletInfoCommand } from "./commands/wallet.js";
@@ -49,6 +51,8 @@ const mcpRoutes = buildRouteMap({
 const routes = buildRouteMap({
   routes: {
     fetch: fetchCommand,
+    serve: serveCommand,
+    claude: claudeCommand,
     mcp: mcpRoutes,
     wallet: walletRoutes,
     config: configRoutes,

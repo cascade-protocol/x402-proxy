@@ -3,9 +3,6 @@ import { run } from "@stricli/core";
 import { app } from "../app.js";
 import { buildContext } from "../context.js";
 
-// Ensure Ctrl+C always exits cleanly (raw mode from @clack/prompts can swallow SIGINT)
-process.on("SIGINT", () => process.exit(130));
-
 // Pre-process args before Stricli parses them
 const rawArgs = process.argv.slice(2);
 const args: string[] = [];
@@ -27,4 +24,11 @@ for (let i = 0; i < rawArgs.length; i++) {
     args.push(a);
   }
 }
+
+const topLevelCommand = args[0];
+if (topLevelCommand !== "serve" && topLevelCommand !== "claude") {
+  // Ensure Ctrl+C always exits cleanly (raw mode from @clack/prompts can swallow SIGINT)
+  process.on("SIGINT", () => process.exit(130));
+}
+
 await run(app, args, buildContext(process));

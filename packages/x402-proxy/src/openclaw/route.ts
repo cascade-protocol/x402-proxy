@@ -1,37 +1,65 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { X402ProxyHandler } from "../handler.js";
-import { extractTxSignature } from "../handler.js";
+import type { MppProxyHandler, X402ProxyHandler } from "../handler.js";
+import { createMppProxyHandler, extractTxSignature, TEMPO_NETWORK } from "../handler.js";
 import { appendHistory } from "../history.js";
-import { type ModelEntry, paymentAmount, SOL_MAINNET } from "./tools.js";
+import type { ResolvedProviderConfig } from "./defaults.js";
+import { type ModelEntry, parseMppAmount, paymentAmount, SOL_MAINNET } from "./tools.js";
 
-export type X402RouteOptions = {
-  upstreamOrigin: string;
-  proxy: X402ProxyHandler;
+export type InferenceProxyRouteOptions = {
+  providers: ResolvedProviderConfig[];
+  getX402Proxy: () => X402ProxyHandler | null;
   getWalletAddress: () => string | null;
+  getWalletAddressForNetwork?: (network: string) => string | null;
+  getEvmKey: () => string | null;
   historyPath: string;
   allModels: Pick<ModelEntry, "provider" | "id">[];
   logger: { info: (msg: string) => void; error: (msg: string) => void };
 };
 
-export function createX402RouteHandler(
-  opts: X402RouteOptions,
-): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
-  const { upstreamOrigin, proxy, getWalletAddress, historyPath, allModels, logger } = opts;
+export function createInferenceProxyRouteHandler(
+  opts: InferenceProxyRouteOptions,
+): (req: IncomingMessage, res: ServerResponse) => Promise<boolean> {
+  const {
+    providers,
+    getX402Proxy,
+    getWalletAddress,
+    getWalletAddressForNetwork,
+    getEvmKey,
+    historyPath,
+    allModels,
+    logger,
+  } = opts;
 
-  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+  const sortedProviders = providers
+    .slice()
+    .sort((left, right) => right.baseUrl.length - left.baseUrl.length);
+
+  return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const url = new URL(req.url ?? "/", "http://localhost");
+    const provider = sortedProviders.find(
+      (entry) => entry.baseUrl === "/" || url.pathname.startsWith(entry.baseUrl),
+    );
+
+    if (!provider) {
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: { message: "Unknown inference route", code: "not_found" } }));
+      return true;
+    }
 
     const walletAddress = getWalletAddress();
     if (!walletAddress) {
       res.writeHead(503, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ error: { message: "Wallet not loaded yet", code: "not_ready" } }));
-      return;
+      return true;
     }
 
-    const pathSuffix = url.pathname.slice(5); // strip /x402
-    const upstreamUrl = upstreamOrigin + pathSuffix + url.search;
+    const pathSuffix =
+      provider.baseUrl === "/" ? url.pathname : url.pathname.slice(provider.baseUrl.length);
+    const upstreamBase = provider.upstreamUrl.replace(/\/+$/, "");
+    const normalizedPath = pathSuffix.startsWith("/") ? pathSuffix : `/${pathSuffix}`;
+    const upstreamUrl = `${upstreamBase}${normalizedPath}${url.search}`;
 
-    logger.info(`x402: intercepting ${upstreamUrl.substring(0, 80)}`);
+    logger.info(`proxy: intercepting ${upstreamUrl.substring(0, 80)}`);
 
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
@@ -72,23 +100,77 @@ export function createX402RouteHandler(
     const startMs = Date.now();
 
     try {
-      const response = await proxy.x402Fetch(upstreamUrl, {
+      const requestInit: RequestInit = {
         method,
         headers,
         body: ["GET", "HEAD"].includes(method) ? undefined : body,
-      });
+      };
+      const useMpp = provider.protocol === "mpp" || provider.protocol === "auto";
+      const wantsStreaming = isChatCompletion && /"stream"\s*:\s*true/.test(body);
+
+      if (useMpp) {
+        const evmKey = getEvmKey();
+        if (!evmKey) {
+          res.writeHead(503, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: {
+                message:
+                  "MPP inference requires an EVM wallet. Configure X402_PROXY_WALLET_MNEMONIC or X402_PROXY_WALLET_EVM_KEY.",
+                code: "mpp_wallet_missing",
+              },
+            }),
+          );
+          return true;
+        }
+        return await handleMppRequest({
+          req,
+          res,
+          upstreamUrl,
+          requestInit,
+          walletAddress,
+          historyPath,
+          logger,
+          allModels,
+          thinkingMode,
+          wantsStreaming,
+          startMs,
+          evmKey,
+          mppSessionBudget: provider.mppSessionBudget,
+        });
+      }
+
+      const proxy = getX402Proxy();
+      if (!proxy) {
+        res.writeHead(503, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            error: {
+              message:
+                "x402 wallet not loaded yet. Configure a Solana wallet or switch the provider to mpp.",
+              code: "x402_wallet_missing",
+            },
+          }),
+        );
+        return true;
+      }
+
+      const response = await proxy.x402Fetch(upstreamUrl, requestInit);
 
       if (response.status === 402) {
         const responseBody = await response.text();
         logger.error(`x402: payment failed, raw response: ${responseBody}`);
         const payment = proxy.shiftPayment();
         const amount = paymentAmount(payment);
+        const paymentFrom =
+          (payment?.network && getWalletAddressForNetwork?.(payment.network)) ?? walletAddress;
+        const paymentNetwork = payment?.network ?? SOL_MAINNET;
         appendHistory(historyPath, {
           t: Date.now(),
           ok: false,
           kind: "x402_inference",
-          net: SOL_MAINNET,
-          from: walletAddress,
+          net: paymentNetwork,
+          from: paymentFrom,
           to: payment?.payTo,
           amount,
           token: amount != null ? "USDC" : undefined,
@@ -111,7 +193,7 @@ export function createX402RouteHandler(
             error: { message: userMessage, type: "x402_payment_error", code: "payment_failed" },
           }),
         );
-        return;
+        return true;
       }
 
       if (!response.ok && isChatCompletion) {
@@ -119,12 +201,15 @@ export function createX402RouteHandler(
         logger.error(`x402: upstream error ${response.status}: ${responseBody.substring(0, 300)}`);
         const payment = proxy.shiftPayment();
         const amount = paymentAmount(payment);
+        const paymentFrom =
+          (payment?.network && getWalletAddressForNetwork?.(payment.network)) ?? walletAddress;
+        const paymentNetwork = payment?.network ?? SOL_MAINNET;
         appendHistory(historyPath, {
           t: Date.now(),
           ok: false,
           kind: "x402_inference",
-          net: SOL_MAINNET,
-          from: walletAddress,
+          net: paymentNetwork,
+          from: paymentFrom,
           to: payment?.payTo,
           amount,
           token: amount != null ? "USDC" : undefined,
@@ -142,7 +227,7 @@ export function createX402RouteHandler(
             },
           }),
         );
-        return;
+        return true;
       }
 
       logger.info(`x402: response ${response.status}`);
@@ -150,6 +235,9 @@ export function createX402RouteHandler(
       const txSig = extractTxSignature(response);
       const payment = proxy.shiftPayment();
       const amount = paymentAmount(payment);
+      const paymentFrom =
+        (payment?.network && getWalletAddressForNetwork?.(payment.network)) ?? walletAddress;
+      const paymentNetwork = payment?.network ?? SOL_MAINNET;
 
       const resHeaders: Record<string, string> = {};
       for (const [key, val] of response.headers.entries()) {
@@ -163,21 +251,20 @@ export function createX402RouteHandler(
           t: Date.now(),
           ok: true,
           kind: "x402_inference",
-          net: SOL_MAINNET,
-          from: walletAddress,
+          net: paymentNetwork,
+          from: paymentFrom,
           to: payment?.payTo,
           tx: txSig,
           amount,
           token: "USDC",
           ms: Date.now() - startMs,
         });
-        return;
+        return true;
       }
 
       const ct = response.headers.get("content-type") || "";
       const isSSE = isChatCompletion && ct.includes("text/event-stream");
-      let lastDataLine = "";
-      let residual = "";
+      const sse = isSSE ? createSseTracker() : null;
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -186,17 +273,7 @@ export function createX402RouteHandler(
           const { done, value } = await reader.read();
           if (done) break;
           res.write(value);
-
-          if (isSSE) {
-            const text = residual + decoder.decode(value, { stream: true });
-            const lines = text.split("\n");
-            residual = lines.pop() ?? "";
-            for (const line of lines) {
-              if (line.startsWith("data: ") && line !== "data: [DONE]") {
-                lastDataLine = line.slice(6);
-              }
-            }
-          }
+          sse?.push(decoder.decode(value, { stream: true }));
         }
       } finally {
         reader.releaseLock();
@@ -204,9 +281,9 @@ export function createX402RouteHandler(
       res.end();
 
       const durationMs = Date.now() - startMs;
-      if (isSSE && lastDataLine) {
+      if (sse?.lastData) {
         try {
-          const parsed = JSON.parse(lastDataLine) as {
+          const parsed = JSON.parse(sse.lastData) as {
             model?: string;
             usage?: {
               prompt_tokens?: number;
@@ -224,8 +301,8 @@ export function createX402RouteHandler(
             t: Date.now(),
             ok: true,
             kind: "x402_inference",
-            net: SOL_MAINNET,
-            from: walletAddress,
+            net: paymentNetwork,
+            from: paymentFrom,
             to: payment?.payTo,
             tx: txSig,
             amount,
@@ -246,8 +323,8 @@ export function createX402RouteHandler(
             t: Date.now(),
             ok: true,
             kind: "x402_inference",
-            net: SOL_MAINNET,
-            from: walletAddress,
+            net: paymentNetwork,
+            from: paymentFrom,
             to: payment?.payTo,
             tx: txSig,
             amount,
@@ -260,8 +337,8 @@ export function createX402RouteHandler(
           t: Date.now(),
           ok: true,
           kind: "x402_inference",
-          net: SOL_MAINNET,
-          from: walletAddress,
+          net: paymentNetwork,
+          from: paymentFrom,
           to: payment?.payTo,
           tx: txSig,
           amount,
@@ -269,11 +346,11 @@ export function createX402RouteHandler(
           ms: durationMs,
         });
       }
-      return;
+      return true;
     } catch (err) {
       const msg = String(err);
       logger.error(`x402: fetch threw: ${msg}`);
-      proxy.shiftPayment();
+      getX402Proxy()?.shiftPayment();
       appendHistory(historyPath, {
         t: Date.now(),
         ok: false,
@@ -301,6 +378,267 @@ export function createX402RouteHandler(
           }),
         );
       }
+      return true;
     }
   };
+}
+
+function createSseTracker() {
+  let residual = "";
+  let lastDataLine = "";
+  return {
+    push(text: string) {
+      const combined = residual + text;
+      const lines = combined.split("\n");
+      residual = lines.pop() ?? "";
+      for (const line of lines) {
+        if (line.startsWith("data: ") && line !== "data: [DONE]") {
+          lastDataLine = line.slice(6);
+        }
+      }
+    },
+    get lastData() {
+      return lastDataLine;
+    },
+  };
+}
+
+type HandleMppRequestOptions = {
+  req: IncomingMessage;
+  res: ServerResponse;
+  upstreamUrl: string;
+  requestInit: RequestInit;
+  walletAddress: string;
+  historyPath: string;
+  logger: { info: (msg: string) => void; error: (msg: string) => void };
+  allModels: Pick<ModelEntry, "provider" | "id">[];
+  thinkingMode?: string;
+  wantsStreaming: boolean;
+  startMs: number;
+  evmKey: string;
+  mppSessionBudget: string;
+};
+
+async function closeMppSession(handler: MppProxyHandler): Promise<void> {
+  try {
+    await handler.close();
+  } catch {
+    // best effort: request already completed
+  }
+}
+
+export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<boolean> {
+  const {
+    req,
+    res,
+    upstreamUrl,
+    requestInit,
+    walletAddress,
+    historyPath,
+    logger,
+    allModels,
+    thinkingMode,
+    wantsStreaming,
+    startMs,
+    evmKey,
+    mppSessionBudget,
+  } = opts;
+
+  const mpp = await createMppProxyHandler({ evmKey, maxDeposit: mppSessionBudget });
+
+  try {
+    if (wantsStreaming) {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+      });
+
+      const sse = createSseTracker();
+      const stream = await mpp.sse(upstreamUrl, requestInit);
+      for await (const chunk of stream) {
+        const text = String(chunk);
+        res.write(text);
+        sse.push(text);
+      }
+
+      res.end();
+      mpp.shiftPayment(); // skip session-open marker pushed by sse()
+      const payment = mpp.shiftPayment(); // get the close receipt
+      appendInferenceHistory({
+        historyPath,
+        allModels,
+        walletAddress,
+        paymentNetwork: payment?.network ?? TEMPO_NETWORK,
+        paymentTo: undefined,
+        tx: payment?.receipt?.reference ?? payment?.channelId,
+        amount: parseMppAmount(payment?.amount),
+        thinkingMode,
+        lastDataLine: sse.lastData,
+        durationMs: Date.now() - startMs,
+      });
+      return true;
+    }
+
+    const response = await mpp.fetch(upstreamUrl, requestInit);
+    const tx = extractTxSignature(response);
+
+    if (response.status === 402) {
+      const responseBody = await response.text();
+      logger.error(`mpp: payment failed, raw response: ${responseBody}`);
+      appendHistory(historyPath, {
+        t: Date.now(),
+        ok: false,
+        kind: "x402_inference",
+        net: TEMPO_NETWORK,
+        from: walletAddress,
+        ms: Date.now() - startMs,
+        error: "payment_required",
+      });
+      res.writeHead(402, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            message: `MPP payment failed: ${responseBody.substring(0, 200) || "unknown error"}. Wallet: ${walletAddress}`,
+            type: "mpp_payment_error",
+            code: "payment_failed",
+          },
+        }),
+      );
+      return true;
+    }
+
+    const resHeaders: Record<string, string> = {};
+    for (const [key, value] of response.headers.entries()) {
+      resHeaders[key] = value;
+    }
+    res.writeHead(response.status, resHeaders);
+    const responseBody = await response.text();
+    res.end(responseBody);
+
+    const payment = mpp.shiftPayment();
+    appendInferenceHistory({
+      historyPath,
+      allModels,
+      walletAddress,
+      paymentNetwork: payment?.network ?? TEMPO_NETWORK,
+      paymentTo: undefined,
+      tx: tx ?? payment?.receipt?.reference,
+      amount: parseMppAmount(payment?.amount),
+      thinkingMode,
+      lastDataLine: responseBody,
+      durationMs: Date.now() - startMs,
+    });
+    return true;
+  } catch (err) {
+    logger.error(`mpp: fetch threw: ${String(err)}`);
+    appendHistory(historyPath, {
+      t: Date.now(),
+      ok: false,
+      kind: "x402_inference",
+      net: TEMPO_NETWORK,
+      from: walletAddress,
+      ms: Date.now() - startMs,
+      error: String(err).substring(0, 200),
+    });
+    if (!res.headersSent) {
+      res.writeHead(402, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: {
+            message: `MPP request failed: ${String(err)}`,
+            type: "mpp_payment_error",
+            code: "payment_failed",
+          },
+        }),
+      );
+    }
+    return true;
+  } finally {
+    await closeMppSession(mpp);
+    if (!res.writableEnded) {
+      res.end();
+    }
+    req.resume();
+  }
+}
+
+type AppendInferenceHistoryOptions = {
+  historyPath: string;
+  allModels: Pick<ModelEntry, "provider" | "id">[];
+  walletAddress: string;
+  paymentNetwork: string;
+  paymentTo?: string;
+  tx?: string;
+  amount?: number;
+  thinkingMode?: string;
+  lastDataLine: string;
+  durationMs: number;
+};
+
+function appendInferenceHistory(opts: AppendInferenceHistoryOptions): void {
+  const {
+    historyPath,
+    allModels,
+    walletAddress,
+    paymentNetwork,
+    paymentTo,
+    tx,
+    amount,
+    thinkingMode,
+    lastDataLine,
+    durationMs,
+  } = opts;
+
+  try {
+    const parsed = JSON.parse(lastDataLine) as {
+      model?: string;
+      usage?: {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        prompt_tokens_details?: {
+          cached_tokens?: number;
+          cache_creation_input_tokens?: number;
+        };
+        completion_tokens_details?: { reasoning_tokens?: number };
+      };
+    };
+    const usage = parsed.usage;
+    const model = parsed.model ?? "";
+    appendHistory(historyPath, {
+      t: Date.now(),
+      ok: true,
+      kind: "x402_inference",
+      net: paymentNetwork,
+      from: walletAddress,
+      to: paymentTo,
+      tx,
+      amount,
+      token: "USDC",
+      provider: allModels.find(
+        (entry) => entry.id === model || `${entry.provider}/${entry.id}` === model,
+      )?.provider,
+      model,
+      inputTokens: usage?.prompt_tokens ?? 0,
+      outputTokens: usage?.completion_tokens ?? 0,
+      reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
+      cacheRead: usage?.prompt_tokens_details?.cached_tokens,
+      cacheWrite: usage?.prompt_tokens_details?.cache_creation_input_tokens,
+      thinking: thinkingMode,
+      ms: durationMs,
+    });
+  } catch {
+    appendHistory(historyPath, {
+      t: Date.now(),
+      ok: true,
+      kind: "x402_inference",
+      net: paymentNetwork,
+      from: walletAddress,
+      to: paymentTo,
+      tx,
+      amount,
+      token: "USDC",
+      ms: durationMs,
+    });
+  }
 }

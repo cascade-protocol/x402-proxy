@@ -1,18 +1,61 @@
 {
   "id": "x402-proxy",
-  "name": "x402 Proxy",
-  "description": "x402/MPP payments, Solana wallet, and inference proxying",
+  "name": "mpp/x402 Payments Proxy",
+  "description": "x402 and MPP payments, wallet tools, and paid inference proxying",
   "version": "1.0.0",
+  "providers": ["surf"],
+  "autoEnableWhenConfiguredProviders": ["surf"],
+  "skills": ["skills"],
+  "contracts": {
+    "tools": ["x_wallet", "x_balance", "x_request", "x_payment"]
+  },
   "configSchema": {
     "type": "object",
+    "additionalProperties": false,
     "properties": {
       "providers": {
         "type": "object",
-        "description": "Provider catalog keyed by name, each with baseUrl and models array"
+        "description": "Provider catalog keyed by name. Defaults to the built-in surf provider when omitted.",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "baseUrl": {
+              "type": "string",
+              "description": "Gateway base path for this provider, typically under /x402-proxy"
+            },
+            "upstreamUrl": {
+              "type": "string",
+              "description": "Upstream inference origin to proxy to"
+            },
+            "protocol": {
+              "type": "string",
+              "enum": ["x402", "mpp", "auto"],
+              "description": "Payment protocol for this provider. Defaults to mpp."
+            },
+            "mppSessionBudget": {
+              "type": "string",
+              "description": "Maximum USDC budget to lock for MPP sessions for this provider (default: 0.5)"
+            },
+            "models": {
+              "type": "array",
+              "description": "Static OpenClaw model catalog entries for this provider"
+            }
+          }
+        }
+      },
+      "protocol": {
+        "type": "string",
+        "enum": ["x402", "mpp", "auto"],
+        "description": "Default payment protocol fallback for providers that do not override it."
+      },
+      "mppSessionBudget": {
+        "type": "string",
+        "description": "Default maximum USDC budget to lock for MPP sessions (default: 0.5)"
       },
       "keypairPath": {
         "type": "string",
-        "description": "Optional path to Solana keypair JSON file (overrides x402-proxy wallet resolution)"
+        "description": "Optional path to Solana keypair JSON file (overrides x402-proxy wallet resolution for Solana/x402 surfaces)"
       },
       "rpcUrl": {
         "type": "string",
@@ -24,5 +67,27 @@
       }
     },
     "required": []
+  },
+  "uiHints": {
+    "protocol": {
+      "label": "Default protocol",
+      "help": "Used only when a provider entry does not set its own protocol."
+    },
+    "mppSessionBudget": {
+      "label": "Default MPP budget",
+      "placeholder": "0.5"
+    },
+    "keypairPath": {
+      "label": "Solana keypair path",
+      "advanced": true
+    },
+    "rpcUrl": {
+      "label": "Solana RPC URL",
+      "advanced": true
+    },
+    "dashboardUrl": {
+      "label": "Dashboard URL",
+      "advanced": true
+    }
   }
 }

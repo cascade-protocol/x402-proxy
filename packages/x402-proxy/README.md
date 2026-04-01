@@ -81,6 +81,8 @@ $ npx x402-proxy https://api.example.com/data | jq '.results'
 
 ```bash
 $ npx x402-proxy <url>                    # paid HTTP request (default command)
+$ npx x402-proxy serve                    # local paid inference proxy server
+$ npx x402-proxy claude                   # run Claude Code through a paid local proxy
 $ npx x402-proxy mcp <url>                # MCP stdio proxy for agents
 $ npx x402-proxy mcp add <name> <url>     # install MCP server into your AI client
 $ npx x402-proxy setup                    # onboarding wizard
@@ -141,9 +143,11 @@ See the [library API docs](https://github.com/cascade-protocol/x402-proxy/tree/m
 
 ## OpenClaw Plugin
 
-x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin, giving your gateway automatic x402 payment capabilities. Registers `x_balance` and `x_payment` tools, `/x_wallet` command, and an HTTP route proxy for upstream x402 endpoints.
+x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin, giving your gateway automatic x402 and MPP payment capabilities. Registers `x_wallet` and `x_request` tools (aliased as `x_balance`/`x_payment`), `/x_wallet` and `/x_send` commands, and an HTTP route proxy for upstream inference endpoints.
 
-Configure providers and models in OpenClaw plugin settings. Uses the standard wallet resolution (env vars or `wallet.json`).
+By default, the plugin registers a built-in `surf` provider at `/x402-proxy/v1` that points at `https://surf.cascade.fyi/api/v1/inference` and prefers MPP. Uses the standard wallet resolution (env vars or `wallet.json`).
+
+For MPP-backed inference, make sure the wallet source includes an EVM key as well as Solana. `npx x402-proxy setup` does this automatically.
 
 ## License
 

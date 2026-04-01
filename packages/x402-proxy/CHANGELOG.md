@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-01
+
+### Added
+- `serve` command - local HTTP proxy server for paid inference endpoints, auto-detects wallet and preferred network
+- `claude` command - run Claude Code through a paid local proxy with `ANTHROPIC_BASE_URL` auto-configured
+- `--model` flag on `claude` command (default: `minimax/minimax-m2.7`) - sets `ANTHROPIC_CUSTOM_MODEL_OPTION` for non-Anthropic models
+- MPP payment support in OpenClaw plugin - inference proxy and `x_request` tool now handle both x402 (Solana) and MPP (Tempo/Base) protocols
+- `/x_send` slash command with confirmation flow (5-min TTL) for USDC transfers from the OpenClaw gateway
+- Default Surf provider config - plugin works out of the box without explicit provider configuration
+- `defaults.ts` module with provider config types, resolution logic, and built-in model catalog
+- Dual-wallet support in OpenClaw plugin - EVM and Solana addresses resolved independently
+- `addressForNetwork` and `parseMppAmount` exported as shared helpers from `tools.ts`
+
+### Changed
+- OpenClaw plugin migrated to `definePluginEntry` SDK (from hand-rolled types)
+- `x_balance` tool renamed to `x_wallet` (alias: `x_balance`)
+- `x_payment` tool renamed to `x_request` (alias: `x_payment`) with x402/MPP protocol branching
+- `/x_wallet` command: `send` subcommand now redirects to `/x_send`
+- Inference proxy route handler renamed from `createX402RouteHandler` to `createInferenceProxyRouteHandler`
+- SSE token tracking deduplicated into `createSseTracker()` helper shared by x402 and MPP paths
+- Replaced hardcoded `"eip155:4217"` with imported `TEMPO_NETWORK` constant
+- `serve` and `claude` commands handle their own SIGINT/SIGTERM (CLI entry point skips default handler for them)
+- Wallet loading in plugin uses proper promise dedup (`walletLoadPromise`) instead of boolean flag
+- Providers sorted once in route handler closure instead of per-request
+
+### Fixed
+- `preferredNetwork === "undefined"` string comparison in serve command replaced with proper `preferredNetwork || undefined` check
+
 ## [0.9.4] - 2026-03-27
 
 ### Fixed
@@ -300,7 +328,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.4...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.4...v0.10.0
 [0.9.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.3...v0.9.4
 [0.9.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.2...v0.9.3
 [0.9.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.9.1...v0.9.2

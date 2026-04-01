@@ -41,6 +41,8 @@ npx x402-proxy https://api.example.com/data > response.json
 
 ```
 x402-proxy <url>                        # paid HTTP request (default)
+x402-proxy serve                        # local paid inference proxy server
+x402-proxy claude                       # run Claude Code through paid local proxy
 x402-proxy mcp <url>                    # MCP stdio proxy for AI agents
 x402-proxy mcp add <name> <url>         # install MCP server into AI client
 x402-proxy setup                        # wallet onboarding wizard
@@ -174,7 +176,7 @@ openclaw plugins install x402-proxy
 npx x402-proxy setup   # creates wallet if needed
 ```
 
-Registers: `x_balance` tool, `x_payment` tool, `/x_wallet` command, `/x402/*` HTTP route for inference proxying.
+Registers: `x_wallet` tool, `x_request` tool (aliased as `x_balance`/`x_payment`), `/x_wallet` and `/x_send` commands, `/x402-proxy/*` HTTP route for inference proxying.
 
 ## Library API
 
