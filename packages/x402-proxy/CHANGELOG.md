@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.3] - 2026-04-01
+
+### Fixed
+- Anthropic Messages API (`/v1/messages`) SSE streaming - proxy now emits proper `event: {type}` framing and omits the `data: [DONE]` sentinel that breaks the Anthropic SDK parser
+- Anthropic error responses use correct format (`{type:"error",error:{type,message}}`) instead of OpenAI format for `/v1/messages` endpoints
+- MPP streaming usage tracking - token counts were always 0/0 because raw JSON payloads lacked the `data:` prefix the tracker expected
+- Anthropic usage accumulation from `message_start` (input tokens) and `message_delta` (output tokens) events instead of relying on a single final chunk
+- Anthropic thinking mode (`thinking.budget_tokens`) now extracted from request body for history tracking
+- MPP error messages and payment history now show the EVM wallet address instead of the Solana address
+
 ## [0.10.2] - 2026-04-01
 
 ### Fixed

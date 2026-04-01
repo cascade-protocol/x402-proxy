@@ -82,6 +82,8 @@ export function createInferenceProxyRouteHandler(
     }
 
     const isChatCompletion = pathSuffix.includes("/chat/completions");
+    const isMessagesApi = pathSuffix.includes("/messages");
+    const isLlmEndpoint = isChatCompletion || isMessagesApi;
     let thinkingMode: string | undefined;
     if (isChatCompletion && body) {
       try {
@@ -90,6 +92,17 @@ export function createInferenceProxyRouteHandler(
         if (!parsed.stream_options) {
           parsed.stream_options = { include_usage: true };
           body = JSON.stringify(parsed);
+        }
+      } catch {
+        // not JSON body, leave as-is
+      }
+    }
+    if (isMessagesApi && body) {
+      try {
+        const parsed = JSON.parse(body) as Record<string, unknown>;
+        const thinking = parsed.thinking as { type?: string; budget_tokens?: number } | undefined;
+        if (thinking?.type === "enabled" && thinking.budget_tokens) {
+          thinkingMode = `budget_${thinking.budget_tokens}`;
         }
       } catch {
         // not JSON body, leave as-is
@@ -106,7 +119,7 @@ export function createInferenceProxyRouteHandler(
         body: ["GET", "HEAD"].includes(method) ? undefined : body,
       };
       const useMpp = provider.protocol === "mpp" || provider.protocol === "auto";
-      const wantsStreaming = isChatCompletion && /"stream"\s*:\s*true/.test(body);
+      const wantsStreaming = isLlmEndpoint && /"stream"\s*:\s*true/.test(body);
 
       if (useMpp) {
         const evmKey = getEvmKey();
@@ -123,17 +136,19 @@ export function createInferenceProxyRouteHandler(
           );
           return true;
         }
+        const mppWalletAddress = getWalletAddressForNetwork?.(TEMPO_NETWORK) ?? walletAddress;
         return await handleMppRequest({
           req,
           res,
           upstreamUrl,
           requestInit,
-          walletAddress,
+          walletAddress: mppWalletAddress,
           historyPath,
           logger,
           allModels,
           thinkingMode,
           wantsStreaming,
+          isMessagesApi,
           startMs,
           evmKey,
           mppSessionBudget: provider.mppSessionBudget,
@@ -187,16 +202,18 @@ export function createInferenceProxyRouteHandler(
           userMessage = `x402 payment failed: ${responseBody.substring(0, 200) || "unknown error"}. Wallet: ${walletAddress}`;
         }
 
-        res.writeHead(402, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            error: { message: userMessage, type: "x402_payment_error", code: "payment_failed" },
-          }),
+        writeErrorResponse(
+          res,
+          402,
+          userMessage,
+          "x402_payment_error",
+          "payment_failed",
+          isMessagesApi,
         );
         return true;
       }
 
-      if (!response.ok && isChatCompletion) {
+      if (!response.ok && isLlmEndpoint) {
         const responseBody = await response.text();
         logger.error(`x402: upstream error ${response.status}: ${responseBody.substring(0, 300)}`);
         const payment = proxy.shiftPayment();
@@ -217,15 +234,13 @@ export function createInferenceProxyRouteHandler(
           error: `upstream_${response.status}`,
         });
 
-        res.writeHead(502, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            error: {
-              message: `LLM provider temporarily unavailable (HTTP ${response.status}). Try again shortly.`,
-              type: "x402_upstream_error",
-              code: "upstream_failed",
-            },
-          }),
+        writeErrorResponse(
+          res,
+          502,
+          `LLM provider temporarily unavailable (HTTP ${response.status}). Try again shortly.`,
+          "x402_upstream_error",
+          "upstream_failed",
+          isMessagesApi,
         );
         return true;
       }
@@ -263,7 +278,7 @@ export function createInferenceProxyRouteHandler(
       }
 
       const ct = response.headers.get("content-type") || "";
-      const isSSE = isChatCompletion && ct.includes("text/event-stream");
+      const isSSE = isLlmEndpoint && ct.includes("text/event-stream");
       const sse = isSSE ? createSseTracker() : null;
 
       const reader = response.body.getReader();
@@ -280,72 +295,18 @@ export function createInferenceProxyRouteHandler(
       }
       res.end();
 
-      const durationMs = Date.now() - startMs;
-      if (sse?.lastData) {
-        try {
-          const parsed = JSON.parse(sse.lastData) as {
-            model?: string;
-            usage?: {
-              prompt_tokens?: number;
-              completion_tokens?: number;
-              prompt_tokens_details?: {
-                cached_tokens?: number;
-                cache_creation_input_tokens?: number;
-              };
-              completion_tokens_details?: { reasoning_tokens?: number };
-            };
-          };
-          const usage = parsed.usage;
-          const model = parsed.model ?? "";
-          appendHistory(historyPath, {
-            t: Date.now(),
-            ok: true,
-            kind: "x402_inference",
-            net: paymentNetwork,
-            from: paymentFrom,
-            to: payment?.payTo,
-            tx: txSig,
-            amount,
-            token: "USDC",
-            provider: allModels.find((m) => m.id === model || `${m.provider}/${m.id}` === model)
-              ?.provider,
-            model,
-            inputTokens: usage?.prompt_tokens ?? 0,
-            outputTokens: usage?.completion_tokens ?? 0,
-            reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
-            cacheRead: usage?.prompt_tokens_details?.cached_tokens,
-            cacheWrite: usage?.prompt_tokens_details?.cache_creation_input_tokens,
-            thinking: thinkingMode,
-            ms: durationMs,
-          });
-        } catch {
-          appendHistory(historyPath, {
-            t: Date.now(),
-            ok: true,
-            kind: "x402_inference",
-            net: paymentNetwork,
-            from: paymentFrom,
-            to: payment?.payTo,
-            tx: txSig,
-            amount,
-            token: "USDC",
-            ms: durationMs,
-          });
-        }
-      } else {
-        appendHistory(historyPath, {
-          t: Date.now(),
-          ok: true,
-          kind: "x402_inference",
-          net: paymentNetwork,
-          from: paymentFrom,
-          to: payment?.payTo,
-          tx: txSig,
-          amount,
-          token: "USDC",
-          ms: durationMs,
-        });
-      }
+      appendInferenceHistory({
+        historyPath,
+        allModels,
+        walletAddress: paymentFrom,
+        paymentNetwork,
+        paymentTo: payment?.payTo,
+        tx: txSig,
+        amount,
+        thinkingMode,
+        usage: sse?.result,
+        durationMs: Date.now() - startMs,
+      });
       return true;
     } catch (err) {
       const msg = String(err);
@@ -371,11 +332,13 @@ export function createInferenceProxyRouteHandler(
       }
 
       if (!res.headersSent) {
-        res.writeHead(402, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            error: { message: userMessage, type: "x402_payment_error", code: "payment_failed" },
-          }),
+        writeErrorResponse(
+          res,
+          402,
+          userMessage,
+          "x402_payment_error",
+          "payment_failed",
+          isMessagesApi,
         );
       }
       return true;
@@ -383,22 +346,143 @@ export function createInferenceProxyRouteHandler(
   };
 }
 
-function createSseTracker() {
+export function writeErrorResponse(
+  res: ServerResponse,
+  status: number,
+  message: string,
+  type: string,
+  code: string,
+  isAnthropicFormat: boolean,
+): void {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  if (isAnthropicFormat) {
+    res.end(JSON.stringify({ type: "error", error: { type, message } }));
+  } else {
+    res.end(JSON.stringify({ error: { message, type, code } }));
+  }
+}
+
+export type InferenceUsage = {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  reasoningTokens?: number;
+  cacheRead?: number;
+  cacheWrite?: number;
+};
+
+export function createSseTracker() {
   let residual = "";
-  let lastDataLine = "";
+  // Anthropic accumulated state
+  let anthropicModel = "";
+  let anthropicInputTokens = 0;
+  let anthropicOutputTokens = 0;
+  let anthropicCacheRead: number | undefined;
+  let anthropicCacheWrite: number | undefined;
+  // OpenAI: last data line with usage
+  let lastOpenAiData = "";
+  let isAnthropic = false;
+
+  function processJson(json: string): void {
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(json);
+    } catch {
+      return;
+    }
+
+    const type = parsed.type as string | undefined;
+
+    // Anthropic streaming events
+    if (type === "message_start") {
+      isAnthropic = true;
+      const msg = parsed.message as Record<string, unknown> | undefined;
+      anthropicModel = (msg?.model as string) ?? "";
+      const u = msg?.usage as Record<string, number | null> | undefined;
+      if (u) {
+        anthropicInputTokens = u.input_tokens ?? 0;
+        anthropicCacheWrite = u.cache_creation_input_tokens ?? undefined;
+        anthropicCacheRead = u.cache_read_input_tokens ?? undefined;
+      }
+      return;
+    }
+    if (type === "message_delta") {
+      isAnthropic = true;
+      const u = parsed.usage as Record<string, number | null> | undefined;
+      if (u?.output_tokens != null) anthropicOutputTokens = u.output_tokens;
+      return;
+    }
+    // Anthropic non-streaming complete response
+    if (type === "message") {
+      isAnthropic = true;
+      anthropicModel = (parsed.model as string) ?? "";
+      const u = parsed.usage as Record<string, number | null> | undefined;
+      if (u) {
+        anthropicInputTokens = u.input_tokens ?? 0;
+        anthropicOutputTokens = u.output_tokens ?? 0;
+        anthropicCacheWrite = u.cache_creation_input_tokens ?? undefined;
+        anthropicCacheRead = u.cache_read_input_tokens ?? undefined;
+      }
+      return;
+    }
+
+    // OpenAI: keep last chunk that has usage
+    if (parsed.usage || parsed.model) lastOpenAiData = json;
+  }
+
   return {
-    push(text: string) {
+    /** Push raw SSE bytes - for x402 path (contains "event:"/"data:" framing) */
+    push(text: string): void {
       const combined = residual + text;
       const lines = combined.split("\n");
       residual = lines.pop() ?? "";
       for (const line of lines) {
         if (line.startsWith("data: ") && line !== "data: [DONE]") {
-          lastDataLine = line.slice(6);
+          processJson(line.slice(6));
         }
       }
     },
-    get lastData() {
-      return lastDataLine;
+    /** Push raw JSON payload - for MPP path (no SSE framing) */
+    pushJson(text: string): void {
+      processJson(text);
+    },
+    /** Parsed usage result, or undefined if nothing was captured */
+    get result(): InferenceUsage | undefined {
+      if (isAnthropic) {
+        if (!anthropicModel && !anthropicInputTokens && !anthropicOutputTokens) return undefined;
+        return {
+          model: anthropicModel,
+          inputTokens: anthropicInputTokens,
+          outputTokens: anthropicOutputTokens,
+          cacheRead: anthropicCacheRead,
+          cacheWrite: anthropicCacheWrite,
+        };
+      }
+      if (!lastOpenAiData) return undefined;
+      try {
+        const parsed = JSON.parse(lastOpenAiData) as {
+          model?: string;
+          usage?: {
+            prompt_tokens?: number;
+            completion_tokens?: number;
+            prompt_tokens_details?: {
+              cached_tokens?: number;
+              cache_creation_input_tokens?: number;
+            };
+            completion_tokens_details?: { reasoning_tokens?: number };
+          };
+        };
+        return {
+          model: parsed.model ?? "",
+          inputTokens: parsed.usage?.prompt_tokens ?? 0,
+          outputTokens: parsed.usage?.completion_tokens ?? 0,
+          reasoningTokens: parsed.usage?.completion_tokens_details?.reasoning_tokens,
+          cacheRead: parsed.usage?.prompt_tokens_details?.cached_tokens,
+          cacheWrite: parsed.usage?.prompt_tokens_details?.cache_creation_input_tokens,
+        };
+      } catch {
+        return undefined;
+      }
     },
   };
 }
@@ -414,6 +498,7 @@ type HandleMppRequestOptions = {
   allModels: Pick<ModelEntry, "provider" | "id">[];
   thinkingMode?: string;
   wantsStreaming: boolean;
+  isMessagesApi: boolean;
   startMs: number;
   evmKey: string;
   mppSessionBudget: string;
@@ -439,6 +524,7 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     allModels,
     thinkingMode,
     wantsStreaming,
+    isMessagesApi,
     startMs,
     evmKey,
     mppSessionBudget,
@@ -456,12 +542,24 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
 
       const sse = createSseTracker();
       const stream = await mpp.sse(upstreamUrl, requestInit);
-      for await (const chunk of stream) {
-        const text = String(chunk);
-        res.write(text);
-        sse.push(text);
+      if (isMessagesApi) {
+        for await (const chunk of stream) {
+          const text = String(chunk);
+          let eventType = "unknown";
+          try {
+            eventType = (JSON.parse(text) as { type?: string }).type ?? "unknown";
+          } catch {}
+          res.write(`event: ${eventType}\ndata: ${text}\n\n`);
+          sse.pushJson(text);
+        }
+      } else {
+        for await (const chunk of stream) {
+          const text = String(chunk);
+          res.write(`data: ${text}\n\n`);
+          sse.pushJson(text);
+        }
+        res.write("data: [DONE]\n\n");
       }
-
       res.end();
       mpp.shiftPayment(); // skip session-open marker pushed by sse()
       const payment = mpp.shiftPayment(); // get the close receipt
@@ -474,7 +572,7 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
         tx: payment?.receipt?.reference ?? payment?.channelId,
         amount: parseMppAmount(payment?.amount),
         thinkingMode,
-        lastDataLine: sse.lastData,
+        usage: sse.result,
         durationMs: Date.now() - startMs,
       });
       return true;
@@ -495,15 +593,13 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
         ms: Date.now() - startMs,
         error: "payment_required",
       });
-      res.writeHead(402, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          error: {
-            message: `MPP payment failed: ${responseBody.substring(0, 200) || "unknown error"}. Wallet: ${walletAddress}`,
-            type: "mpp_payment_error",
-            code: "payment_failed",
-          },
-        }),
+      writeErrorResponse(
+        res,
+        402,
+        `MPP payment failed: ${responseBody.substring(0, 200) || "unknown error"}. Wallet: ${walletAddress}`,
+        "mpp_payment_error",
+        "payment_failed",
+        isMessagesApi,
       );
       return true;
     }
@@ -516,6 +612,8 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     const responseBody = await response.text();
     res.end(responseBody);
 
+    const usageTracker = createSseTracker();
+    usageTracker.pushJson(responseBody);
     const payment = mpp.shiftPayment();
     appendInferenceHistory({
       historyPath,
@@ -526,7 +624,7 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
       tx: tx ?? payment?.receipt?.reference,
       amount: parseMppAmount(payment?.amount),
       thinkingMode,
-      lastDataLine: responseBody,
+      usage: usageTracker.result,
       durationMs: Date.now() - startMs,
     });
     return true;
@@ -542,15 +640,13 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
       error: String(err).substring(0, 200),
     });
     if (!res.headersSent) {
-      res.writeHead(402, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          error: {
-            message: `MPP request failed: ${String(err)}`,
-            type: "mpp_payment_error",
-            code: "payment_failed",
-          },
-        }),
+      writeErrorResponse(
+        res,
+        402,
+        `MPP request failed: ${String(err)}`,
+        "mpp_payment_error",
+        "payment_failed",
+        isMessagesApi,
       );
     }
     return true;
@@ -572,7 +668,7 @@ type AppendInferenceHistoryOptions = {
   tx?: string;
   amount?: number;
   thinkingMode?: string;
-  lastDataLine: string;
+  usage: InferenceUsage | undefined;
   durationMs: number;
 };
 
@@ -586,25 +682,11 @@ function appendInferenceHistory(opts: AppendInferenceHistoryOptions): void {
     tx,
     amount,
     thinkingMode,
-    lastDataLine,
+    usage,
     durationMs,
   } = opts;
 
-  try {
-    const parsed = JSON.parse(lastDataLine) as {
-      model?: string;
-      usage?: {
-        prompt_tokens?: number;
-        completion_tokens?: number;
-        prompt_tokens_details?: {
-          cached_tokens?: number;
-          cache_creation_input_tokens?: number;
-        };
-        completion_tokens_details?: { reasoning_tokens?: number };
-      };
-    };
-    const usage = parsed.usage;
-    const model = parsed.model ?? "";
+  if (usage) {
     appendHistory(historyPath, {
       t: Date.now(),
       ok: true,
@@ -616,18 +698,18 @@ function appendInferenceHistory(opts: AppendInferenceHistoryOptions): void {
       amount,
       token: "USDC",
       provider: allModels.find(
-        (entry) => entry.id === model || `${entry.provider}/${entry.id}` === model,
+        (entry) => entry.id === usage.model || `${entry.provider}/${entry.id}` === usage.model,
       )?.provider,
-      model,
-      inputTokens: usage?.prompt_tokens ?? 0,
-      outputTokens: usage?.completion_tokens ?? 0,
-      reasoningTokens: usage?.completion_tokens_details?.reasoning_tokens,
-      cacheRead: usage?.prompt_tokens_details?.cached_tokens,
-      cacheWrite: usage?.prompt_tokens_details?.cache_creation_input_tokens,
+      model: usage.model,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
+      reasoningTokens: usage.reasoningTokens,
+      cacheRead: usage.cacheRead,
+      cacheWrite: usage.cacheWrite,
       thinking: thinkingMode,
       ms: durationMs,
     });
-  } catch {
+  } else {
     appendHistory(historyPath, {
       t: Date.now(),
       ok: true,
