@@ -1,7 +1,8 @@
 {
   "name": "x402-proxy",
-  "version": "0.10.7",
-  "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo. Also works as an OpenClaw plugin.",
+  "private": true,
+  "version": "0.10.8",
+  "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo.",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -37,12 +38,13 @@
     "x402-proxy": "./dist/bin/cli.js"
   },
   "scripts": {
-    "build": "rm -rf dist && tsdown --publint && cp openclaw.plugin.json dist/",
-    "dev": "tsdown --watch",
+    "build": "pnpm exec tsdown --config ../../tsdown.config.ts",
+    "dev": "pnpm exec tsdown --config ../../tsdown.config.ts --watch",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "check": "pnpm type-check && biome check --write",
-    "prepublishOnly": "pnpm build"
+    "stage:release": "node ../../scripts/stage-x402-packages.mjs",
+    "verify:release": "node ../../scripts/verify-staged-x402-packages.mjs"
   },
   "dependencies": {
     "@clack/prompts": "^1.1.0",

@@ -143,7 +143,13 @@ See the [library API docs](https://github.com/cascade-protocol/x402-proxy/tree/m
 
 ## OpenClaw Plugin
 
-x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin, giving your gateway automatic x402 and MPP payment capabilities. Registers `x_wallet` and `x_request` tools (aliased as `x_balance`/`x_payment`), `/x_wallet` and `/x_send` commands, and an HTTP route proxy for upstream inference endpoints.
+The OpenClaw plugin now ships as a separate npm package: `x402-proxy-openclaw`.
+
+```bash
+openclaw plugins install x402-proxy-openclaw
+```
+
+It gives your gateway automatic x402 and MPP payment capabilities. Registers `x_wallet` and `x_request` tools (aliased as `x_balance`/`x_payment`), `/x_wallet` and `/x_send` commands, and an HTTP route proxy for upstream inference endpoints.
 
 By default, the plugin registers a built-in `surf` provider at `/x402-proxy/v1` that points at `https://surf.cascade.fyi/api/v1/inference` and prefers MPP. Uses the standard wallet resolution (env vars or `wallet.json`).
 

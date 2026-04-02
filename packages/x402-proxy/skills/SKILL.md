@@ -167,12 +167,12 @@ stdout = response body, stderr = payment info. Pipes, redirects, and `jq` all wo
 
 ## OpenClaw Plugin
 
-x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin for automatic x402 payments, wallet management, and pay-per-use inference proxying. For full installation, provider/model configuration, and troubleshooting, read `references/openclaw-plugin.md`.
+x402-proxy also ships as a separate [OpenClaw](https://openclaw.dev) plugin package, `x402-proxy-openclaw`, for automatic x402 payments, wallet management, and pay-per-use inference proxying. For full installation, provider/model configuration, and troubleshooting, read `references/openclaw-plugin.md`.
 
 Quick install:
 
 ```bash
-openclaw plugins install x402-proxy
+openclaw plugins install x402-proxy-openclaw
 npx x402-proxy setup   # creates wallet if needed
 ```
 

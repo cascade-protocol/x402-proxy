@@ -1,12 +1,15 @@
+import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MppProxyHandler, X402ProxyHandler } from "../handler.js";
 import { extractTxSignature, TEMPO_NETWORK } from "../handler.js";
 import { appendHistory } from "../history.js";
+import { writeDebugLog } from "../lib/debug-log.js";
+import { isDebugEnabled } from "../lib/env.js";
 import type { ResolvedProviderConfig } from "./defaults.js";
 import { type ModelEntry, parseMppAmount, paymentAmount, SOL_MAINNET } from "./tools.js";
 
 function dbg(msg: string): void {
-  if (process.env.X402_PROXY_DEBUG === "1") process.stderr.write(`[x402-proxy] ${msg}\n`);
+  if (isDebugEnabled()) process.stderr.write(`[x402-proxy] ${msg}\n`);
 }
 
 function createDownstreamAbort(req: IncomingMessage, res: ServerResponse) {
@@ -58,6 +61,7 @@ export function createInferenceProxyRouteHandler(
 
   return async (req: IncomingMessage, res: ServerResponse): Promise<boolean> => {
     const downstream = createDownstreamAbort(req, res);
+    const requestId = randomUUID().slice(0, 8);
     const url = new URL(req.url ?? "/", "http://localhost");
     const provider = sortedProviders.find(
       (entry) => entry.baseUrl === "/" || url.pathname.startsWith(entry.baseUrl),
@@ -135,6 +139,15 @@ export function createInferenceProxyRouteHandler(
 
     const method = req.method ?? "GET";
     const startMs = Date.now();
+    writeDebugLog("proxy.request.start", {
+      requestId,
+      method,
+      path: url.pathname,
+      upstreamUrl,
+      protocol: provider.protocol,
+      isMessagesApi,
+      isLlmEndpoint,
+    });
 
     try {
       const requestInit: RequestInit = {
@@ -168,6 +181,7 @@ export function createInferenceProxyRouteHandler(
           requestInit,
           abortSignal: downstream.signal,
           isLlmEndpoint,
+          requestId,
           walletAddress: mppWalletAddress,
           historyPath,
           logger,
@@ -312,18 +326,43 @@ export function createInferenceProxyRouteHandler(
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let sawFirstChunk = false;
+      let sawFirstWrite = false;
       try {
         while (true) {
           if (downstream.signal.aborted) {
+            writeDebugLog("proxy.x402.aborted", { requestId });
             await reader.cancel().catch(() => {});
             break;
           }
           const { done, value } = await reader.read();
           if (done) break;
+          if (!sawFirstChunk) {
+            sawFirstChunk = true;
+            writeDebugLog("proxy.x402.first_chunk", {
+              requestId,
+              ms: Date.now() - startMs,
+            });
+          }
           res.write(value);
+          if (!sawFirstWrite) {
+            sawFirstWrite = true;
+            writeDebugLog("proxy.x402.first_write", {
+              requestId,
+              ms: Date.now() - startMs,
+            });
+          }
           sse?.push(decoder.decode(value, { stream: true }));
           if (isMessagesApi && sse?.sawAnthropicMessageStop) {
+            writeDebugLog("proxy.x402.message_stop", {
+              requestId,
+              ms: Date.now() - startMs,
+            });
             await reader.cancel().catch(() => {});
+            writeDebugLog("proxy.x402.semantic_close", {
+              requestId,
+              ms: Date.now() - startMs,
+            });
             break;
           }
         }
@@ -331,6 +370,11 @@ export function createInferenceProxyRouteHandler(
         reader.releaseLock();
       }
       if (!res.writableEnded) res.end();
+      writeDebugLog("proxy.x402.end", {
+        requestId,
+        ms: Date.now() - startMs,
+        hasUsage: sse?.result != null,
+      });
 
       if (shouldAppendInferenceHistory({ isLlmEndpoint, amount, usage: sse?.result })) {
         appendInferenceHistory({
@@ -349,6 +393,11 @@ export function createInferenceProxyRouteHandler(
       return true;
     } catch (err) {
       const msg = String(err);
+      writeDebugLog("proxy.request.error", {
+        requestId,
+        ms: Date.now() - startMs,
+        error: msg.substring(0, 200),
+      });
       logger.error(`x402: fetch threw: ${msg}`);
       getX402Proxy()?.shiftPayment();
       if (isLlmEndpoint) {
@@ -384,6 +433,11 @@ export function createInferenceProxyRouteHandler(
       }
       return true;
     } finally {
+      writeDebugLog("proxy.request.finish", {
+        requestId,
+        ms: Date.now() - startMs,
+        aborted: downstream.signal.aborted,
+      });
       downstream.cleanup();
     }
   };
@@ -554,6 +608,7 @@ type HandleMppRequestOptions = {
   requestInit: RequestInit;
   abortSignal: AbortSignal;
   isLlmEndpoint: boolean;
+  requestId: string;
   walletAddress: string;
   historyPath: string;
   logger: { info: (msg: string) => void; error: (msg: string) => void };
@@ -572,6 +627,7 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
     requestInit,
     abortSignal,
     isLlmEndpoint,
+    requestId,
     walletAddress,
     historyPath,
     logger,
@@ -593,35 +649,76 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
 
       const sse = createSseTracker();
       dbg(`mpp.sse() calling ${upstreamUrl}`);
+      writeDebugLog("proxy.mpp.sse.open", { requestId, upstreamUrl });
       const stream = await mpp.sse(upstreamUrl, requestInit);
       dbg("mpp.sse() resolved, iterating stream");
       const iterator = stream[Symbol.asyncIterator]();
       let semanticComplete = false;
+      let sawFirstChunk = false;
+      let sawFirstWrite = false;
       try {
         if (isMessagesApi) {
           while (true) {
-            if (abortSignal.aborted) break;
+            if (abortSignal.aborted) {
+              writeDebugLog("proxy.mpp.aborted", { requestId });
+              break;
+            }
             const { done, value } = await iterator.next();
             if (done) break;
             const text = String(value);
+            if (!sawFirstChunk) {
+              sawFirstChunk = true;
+              writeDebugLog("proxy.mpp.first_chunk", {
+                requestId,
+                ms: Date.now() - startMs,
+              });
+            }
             let eventType = "unknown";
             try {
               eventType = (JSON.parse(text) as { type?: string }).type ?? "unknown";
             } catch {}
             res.write(`event: ${eventType}\ndata: ${text}\n\n`);
+            if (!sawFirstWrite) {
+              sawFirstWrite = true;
+              writeDebugLog("proxy.mpp.first_write", {
+                requestId,
+                ms: Date.now() - startMs,
+              });
+            }
             sse.pushJson(text);
             if (sse.sawAnthropicMessageStop) {
               semanticComplete = true;
+              writeDebugLog("proxy.mpp.message_stop", {
+                requestId,
+                ms: Date.now() - startMs,
+              });
               break;
             }
           }
         } else {
           while (true) {
-            if (abortSignal.aborted) break;
+            if (abortSignal.aborted) {
+              writeDebugLog("proxy.mpp.aborted", { requestId });
+              break;
+            }
             const { done, value } = await iterator.next();
             if (done) break;
             const text = String(value);
+            if (!sawFirstChunk) {
+              sawFirstChunk = true;
+              writeDebugLog("proxy.mpp.first_chunk", {
+                requestId,
+                ms: Date.now() - startMs,
+              });
+            }
             res.write(`data: ${text}\n\n`);
+            if (!sawFirstWrite) {
+              sawFirstWrite = true;
+              writeDebugLog("proxy.mpp.first_write", {
+                requestId,
+                ms: Date.now() - startMs,
+              });
+            }
             sse.pushJson(text);
           }
           if (!abortSignal.aborted) {
@@ -630,6 +727,12 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
+        writeDebugLog("proxy.mpp.stream_error", {
+          requestId,
+          ms: Date.now() - startMs,
+          error: msg.substring(0, 200),
+          semanticComplete,
+        });
         if (!(abortSignal.aborted || semanticComplete) || !msg.includes("terminated")) {
           throw err;
         }
@@ -640,6 +743,12 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
         `stream done, ${sse.result ? `${sse.result.model} ${sse.result.inputTokens}+${sse.result.outputTokens}t` : "no usage"}`,
       );
       if (!res.writableEnded) res.end();
+      if (semanticComplete) {
+        writeDebugLog("proxy.mpp.semantic_close", {
+          requestId,
+          ms: Date.now() - startMs,
+        });
+      }
       mpp.shiftPayment(); // discard session-open marker pushed by sse()
       // Per-request amount is not available for session-based streaming;
       // the session stays open for reuse and settles on shutdown.
@@ -655,10 +764,20 @@ export async function handleMppRequest(opts: HandleMppRequestOptions): Promise<b
           durationMs: Date.now() - startMs,
         });
       }
+      writeDebugLog("proxy.mpp.end", {
+        requestId,
+        ms: Date.now() - startMs,
+        hasUsage: sse.result != null,
+      });
       return true;
     }
 
     const response = await mpp.fetch(upstreamUrl, requestInit);
+    writeDebugLog("proxy.mpp.fetch.response", {
+      requestId,
+      status: response.status,
+      ms: Date.now() - startMs,
+    });
     const tx = extractTxSignature(response);
 
     if (response.status === 402) {

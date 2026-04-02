@@ -42,6 +42,10 @@ export function getHistoryPath(): string {
   return path.join(getConfigDir(), "history.jsonl");
 }
 
+export function getDebugLogPath(): string {
+  return path.join(getConfigDir(), "debug.log");
+}
+
 export function ensureConfigDir(): void {
   fs.mkdirSync(getConfigDir(), { recursive: true });
 }

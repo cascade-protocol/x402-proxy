@@ -14,6 +14,150 @@ type McpFlags = {
   protocol: string | undefined;
 };
 
+type ToolDefinition = {
+  name: string;
+  [key: string]: unknown;
+};
+
+type ResourceDefinition = {
+  uri: string;
+  [key: string]: unknown;
+};
+
+type TextContent = {
+  type: "text";
+  text: string;
+  [key: string]: unknown;
+};
+
+type CallToolResultLike = {
+  content: Array<{ type: string; [key: string]: unknown }>;
+  isError?: boolean;
+  structuredContent?: Record<string, unknown>;
+  _meta?: Record<string, unknown>;
+};
+
+type X402PaymentRequired = {
+  x402Version: number;
+  accepts: Array<{ amount?: string; network: string; [key: string]: unknown }>;
+  [key: string]: unknown;
+};
+
+type X402PaymentRequiredErrorData = {
+  x402?: X402PaymentRequired;
+};
+
+type X402SettleResponse = {
+  transaction?: string;
+  [key: string]: unknown;
+};
+
+const X402_PAYMENT_META_KEY = "x402/payment";
+const X402_PAYMENT_RESPONSE_META_KEY = "x402/payment-response";
+
+export function cloneTool(tool: ToolDefinition): ToolDefinition {
+  return { ...tool };
+}
+
+export function cloneResource(resource: ResourceDefinition): ResourceDefinition {
+  return { ...resource };
+}
+
+export function normalizeCallToolResult(result: CallToolResultLike): CallToolResultLike {
+  return {
+    content: result.content,
+    ...(result.structuredContent !== undefined
+      ? { structuredContent: result.structuredContent }
+      : {}),
+    ...(result.isError !== undefined ? { isError: result.isError } : {}),
+    ...(result._meta !== undefined ? { _meta: result._meta } : {}),
+  };
+}
+
+function isTextContent(content: { type: string; [key: string]: unknown }): content is TextContent {
+  return content.type === "text" && typeof content.text === "string";
+}
+
+function isX402PaymentRequired(value: unknown): value is X402PaymentRequired {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return typeof candidate.x402Version === "number" && Array.isArray(candidate.accepts);
+}
+
+function extractPaymentRequiredFromObject(value: unknown): X402PaymentRequired | undefined {
+  if (isX402PaymentRequired(value)) return value;
+  if (typeof value !== "object" || value === null) return undefined;
+  const candidate = value as Record<string, unknown>;
+  const wrappedError = candidate["x402/error"];
+  if (typeof wrappedError === "object" && wrappedError !== null) {
+    const errorData = (wrappedError as Record<string, unknown>).data;
+    if (isX402PaymentRequired(errorData)) return errorData;
+  }
+  return undefined;
+}
+
+export function extractPaymentRequiredFromResult(
+  result: CallToolResultLike,
+): X402PaymentRequired | undefined {
+  if (!result.isError) return undefined;
+  const structured = extractPaymentRequiredFromObject(result.structuredContent);
+  if (structured) return structured;
+  const first = result.content[0];
+  if (!first || !isTextContent(first)) return undefined;
+  try {
+    return extractPaymentRequiredFromObject(JSON.parse(first.text));
+  } catch {
+    return undefined;
+  }
+}
+
+function extractPaymentRequiredFromError(error: unknown): X402PaymentRequired | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const data = (error as { data?: X402PaymentRequiredErrorData }).data;
+  return data?.x402;
+}
+
+export async function callX402ToolWithAutoPayment(opts: {
+  remoteClient: { callTool(params: Record<string, unknown>): Promise<CallToolResultLike> };
+  name: string;
+  args: Record<string, unknown>;
+  x402PaymentClient: { createPaymentPayload(requirements: X402PaymentRequired): Promise<unknown> };
+  onPaymentRequested: (paymentRequired: X402PaymentRequired, toolName: string) => void;
+  onPaymentSettled: (ctx: {
+    toolName: string;
+    paymentPayload: { accepted?: { network?: string; payTo?: string; amount?: string } };
+    settleResponse?: X402SettleResponse;
+  }) => void;
+}): Promise<CallToolResultLike> {
+  let paymentRequired: X402PaymentRequired | undefined;
+  try {
+    const result = await opts.remoteClient.callTool({ name: opts.name, arguments: opts.args });
+    paymentRequired = extractPaymentRequiredFromResult(result);
+    if (!paymentRequired) return result;
+  } catch (error) {
+    paymentRequired = extractPaymentRequiredFromError(error);
+    if (!paymentRequired) throw error;
+  }
+
+  opts.onPaymentRequested(paymentRequired, opts.name);
+  const paymentPayload = (await opts.x402PaymentClient.createPaymentPayload(paymentRequired)) as {
+    accepted?: { network?: string; payTo?: string; amount?: string };
+  };
+  const paidResult = await opts.remoteClient.callTool({
+    name: opts.name,
+    arguments: opts.args,
+    _meta: { [X402_PAYMENT_META_KEY]: paymentPayload },
+  });
+  opts.onPaymentSettled({
+    toolName: opts.name,
+    paymentPayload,
+    settleResponse: paidResult._meta?.[X402_PAYMENT_RESPONSE_META_KEY] as
+      | X402SettleResponse
+      | undefined,
+  });
+  return paidResult;
+}
+
 export const mcpCommand = buildCommand<McpFlags, [remoteUrl: string], CommandContext>({
   docs: {
     brief: "Start MCP stdio proxy with automatic payment",
@@ -106,7 +250,6 @@ Wallet is auto-generated on first run. No env vars needed.`,
       ReadResourceRequestSchema,
       ToolListChangedNotificationSchema,
       ResourceListChangedNotificationSchema,
-      McpError,
     } = await import("@modelcontextprotocol/sdk/types.js");
 
     async function connectTransport(target: { connect(t: unknown): Promise<void> }) {
@@ -158,8 +301,6 @@ Wallet is auto-generated on first run. No env vars needed.`,
         spendLimitPerTx: config?.spendLimitPerTx,
       });
 
-      const { x402MCPClient } = await import("@x402/mcp");
-
       function warnPayment(
         accepts: Array<{ amount?: string; network: string }> | undefined,
         toolName: string,
@@ -175,22 +316,13 @@ Wallet is auto-generated on first run. No env vars needed.`,
 
       // Connect to remote MCP server
       const remoteClient = new Client({ name: "x402-proxy", version: __VERSION__ });
-      // x402MCPClient expects Client resolved with zod@3 (via @x402/mcp),
-      // but ours resolves with zod@4 (via mppx). Structurally identical.
-      const x402Mcp = new x402MCPClient(
-        remoteClient as unknown as ConstructorParameters<typeof x402MCPClient>[0],
-        x402PaymentClient,
-        {
-          autoPayment: true,
-          onPaymentRequested: (ctx) => {
-            warnPayment(ctx.paymentRequired.accepts, ctx.toolName);
-            return true;
-          },
-        },
-      );
+      await connectTransport(remoteClient);
 
-      // Track payments
-      x402Mcp.onAfterPayment(async (ctx) => {
+      function recordX402Payment(ctx: {
+        toolName: string;
+        paymentPayload: { accepted?: { network?: string; payTo?: string; amount?: string } };
+        settleResponse?: X402SettleResponse;
+      }) {
         const accepted = ctx.paymentPayload.accepted;
         const tx = ctx.settleResponse?.transaction;
         const record: TxRecord = {
@@ -206,12 +338,10 @@ Wallet is auto-generated on first run. No env vars needed.`,
           label: `mcp:${ctx.toolName}`,
         };
         appendHistory(getHistoryPath(), record);
-      });
-
-      await connectTransport(x402Mcp);
+      }
 
       // Discover remote capabilities
-      let { tools } = await x402Mcp.listTools();
+      let { tools } = await remoteClient.listTools();
       dim(`  ${tools.length} tools available`);
 
       let remoteResources: Array<{
@@ -221,7 +351,7 @@ Wallet is auto-generated on first run. No env vars needed.`,
         mimeType?: string;
       }> = [];
       try {
-        const res = await x402Mcp.listResources();
+        const res = await remoteClient.listResources();
         remoteResources = res.resources;
         if (remoteResources.length > 0) dim(`  ${remoteResources.length} resources available`);
       } catch {
@@ -239,69 +369,44 @@ Wallet is auto-generated on first run. No env vars needed.`,
       );
 
       localServer.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-          annotations: t.annotations,
-        })),
+        tools: tools.map((t) => cloneTool(t as ToolDefinition)),
       }));
 
       localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
-        try {
-          const result = await x402Mcp.callTool(name, args ?? {});
-          return {
-            content: result.content as Array<{ type: string; [key: string]: unknown }>,
-            isError: result.isError,
-          };
-        } catch (err) {
-          // Handle McpError(-32042) from dual-protocol servers that throw instead of isError
-          if (err instanceof McpError && err.code === -32042) {
-            const data = err.data as { x402?: Record<string, unknown> } | undefined;
-            const x402PaymentRequired = data?.x402;
-            if (x402PaymentRequired) {
-              const accepts = (
-                x402PaymentRequired as {
-                  accepts?: Array<{ amount?: string; network: string }>;
-                }
-              ).accepts;
-              warnPayment(accepts, name);
-              const paymentPayload = await x402PaymentClient.createPaymentPayload(
-                x402PaymentRequired as Parameters<typeof x402PaymentClient.createPaymentPayload>[0],
-              );
-              const result = await x402Mcp.callToolWithPayment(name, args ?? {}, paymentPayload);
-              return {
-                content: result.content as Array<{ type: string; [key: string]: unknown }>,
-                isError: result.isError,
-              };
-            }
-          }
-          throw err;
-        }
+        const result = await callX402ToolWithAutoPayment({
+          remoteClient: remoteClient as unknown as {
+            callTool(params: Record<string, unknown>): Promise<CallToolResultLike>;
+          },
+          name,
+          args: (args ?? {}) as Record<string, unknown>,
+          x402PaymentClient: x402PaymentClient as unknown as {
+            createPaymentPayload(requirements: X402PaymentRequired): Promise<unknown>;
+          },
+          onPaymentRequested: (paymentRequired, toolName) => {
+            warnPayment(paymentRequired.accepts, toolName);
+          },
+          onPaymentSettled: recordX402Payment,
+        });
+        return normalizeCallToolResult(result);
       });
 
       if (remoteResources.length > 0) {
         localServer.setRequestHandler(ListResourcesRequestSchema, async () => ({
-          resources: remoteResources.map((r) => ({
-            name: r.name,
-            uri: r.uri,
-            description: r.description,
-            mimeType: r.mimeType,
-          })),
+          resources: remoteResources.map((r) => cloneResource(r as ResourceDefinition)),
         }));
 
         localServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-          const result = await x402Mcp.readResource({ uri: request.params.uri });
+          const result = await remoteClient.readResource({ uri: request.params.uri });
           return {
-            contents: result.contents.map((c) => ({ ...c })),
+            contents: result.contents.map((c: Record<string, unknown>) => ({ ...c })),
           };
         });
       }
 
       // Forward remote list-change notifications
       remoteClient.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
-        const updated = await x402Mcp.listTools();
+        const updated = await remoteClient.listTools();
         tools = updated.tools;
         dim(`  Tools updated: ${tools.length} available`);
         await localServer.notification({ method: "notifications/tools/list_changed" });
@@ -309,7 +414,7 @@ Wallet is auto-generated on first run. No env vars needed.`,
 
       if (remoteResources.length > 0) {
         remoteClient.setNotificationHandler(ResourceListChangedNotificationSchema, async () => {
-          const updated = await x402Mcp.listResources();
+          const updated = await remoteClient.listResources();
           remoteResources = updated.resources;
           dim(`  Resources updated: ${remoteResources.length} available`);
           await localServer.notification({ method: "notifications/resources/list_changed" });
@@ -326,7 +431,7 @@ Wallet is auto-generated on first run. No env vars needed.`,
       const cleanup = async () => {
         if (closing) return;
         closing = true;
-        await x402Mcp.close();
+        await remoteClient.close();
         process.exit(0);
       };
       process.stdin.on("end", cleanup);
@@ -402,12 +507,7 @@ Wallet is auto-generated on first run. No env vars needed.`,
       );
 
       localServer.setRequestHandler(ListToolsRequestSchema, async () => ({
-        tools: tools.map((t) => ({
-          name: t.name,
-          description: t.description,
-          inputSchema: t.inputSchema,
-          annotations: t.annotations,
-        })),
+        tools: tools.map((t) => cloneTool(t as ToolDefinition)),
       }));
 
       localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -436,20 +536,12 @@ Wallet is auto-generated on first run. No env vars needed.`,
           lastChallengeAmount = undefined;
         }
 
-        return {
-          content: result.content as Array<{ type: string; [key: string]: unknown }>,
-          isError: result.isError,
-        };
+        return normalizeCallToolResult(result as CallToolResultLike);
       });
 
       if (remoteResources.length > 0) {
         localServer.setRequestHandler(ListResourcesRequestSchema, async () => ({
-          resources: remoteResources.map((r) => ({
-            name: r.name,
-            uri: r.uri,
-            description: r.description,
-            mimeType: r.mimeType,
-          })),
+          resources: remoteResources.map((r) => cloneResource(r as ResourceDefinition)),
         }));
 
         localServer.setRequestHandler(ReadResourceRequestSchema, async (request) => {

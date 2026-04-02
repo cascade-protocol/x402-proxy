@@ -2,7 +2,7 @@
   "id": "x402-proxy",
   "name": "mpp/x402 Payments Proxy",
   "description": "x402 and MPP payments, wallet tools, and paid inference proxying",
-  "version": "1.0.0",
+  "version": "0.10.8",
   "providers": ["surf"],
   "autoEnableWhenConfiguredProviders": ["surf"],
   "skills": ["skills"],

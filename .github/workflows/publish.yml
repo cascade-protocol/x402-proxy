@@ -24,7 +24,12 @@ jobs:
       - run: pnpm check
       - run: pnpm build
       - run: pnpm --filter x402-proxy test
-      - run: pnpm --filter x402-proxy publish --provenance --access public --no-git-checks
+      - run: pnpm stage:release
+      - run: pnpm verify:release
+      - run: npm pack --json packages/x402-proxy/.release/x402-proxy > /dev/null
+      - run: npm pack --json packages/x402-proxy/.release/x402-proxy-openclaw > /dev/null
+      - run: npm publish --provenance --access public packages/x402-proxy/.release/x402-proxy
+      - run: npm publish --provenance --access public packages/x402-proxy/.release/x402-proxy-openclaw
       - name: Extract changelog and create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

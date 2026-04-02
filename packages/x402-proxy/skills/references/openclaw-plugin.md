@@ -1,6 +1,6 @@
 # OpenClaw Plugin Setup
 
-x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin. Gives your gateway automatic x402 and MPP payment, wallet management, and pay-per-use inference proxying via USDC on Solana, Base, and Tempo.
+`x402-proxy-openclaw` is the published [OpenClaw](https://openclaw.dev) plugin package for x402-proxy. It gives your gateway automatic x402 and MPP payment, wallet management, and pay-per-use inference proxying via USDC on Solana, Base, and Tempo.
 
 ## What it registers
 
@@ -13,10 +13,10 @@ x402-proxy ships as an [OpenClaw](https://openclaw.dev) plugin. Gives your gatew
 ## Step 1: Install the plugin
 
 ```bash
-openclaw plugins install x402-proxy
+openclaw plugins install x402-proxy-openclaw
 ```
 
-This downloads from npm, validates `openclaw.plugin.json`, and installs to `~/.openclaw/extensions/x402-proxy/`.
+This downloads `x402-proxy-openclaw` from npm, validates `openclaw.plugin.json`, and installs the plugin under `~/.openclaw/extensions/x402-proxy/`.
 
 ## Step 2: Configure wallet
 

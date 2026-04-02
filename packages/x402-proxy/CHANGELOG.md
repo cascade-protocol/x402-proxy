@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.8] - 2026-04-02
+
+### Added
+- Separate published OpenClaw plugin package: `x402-proxy-openclaw`
+- Release staging and verification flow that produces `x402-proxy` and `x402-proxy-openclaw` together from the same source package directory
+- MCP payment retry tests covering structured x402 errors and paid tool result metadata preservation
+
+### Changed
+- Build output now stages separate CLI and OpenClaw artifacts before publish, while keeping one shared version and release tag
+- OpenClaw install documentation now points to `openclaw plugins install x402-proxy-openclaw`
+
+### Fixed
+- MCP proxy now preserves structured tool metadata such as `outputSchema`, resource metadata, `structuredContent`, and `_meta` when auto-paying x402 tool calls
+- Paid MCP retries now resend tool calls with the `x402/payment` payload while keeping the original result shape intact
+
 ## [0.10.7] - 2026-04-01
 
 ### Added
@@ -393,7 +408,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.7...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.8...HEAD
+[0.10.8]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.7...v0.10.8
 [0.10.7]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.6...v0.10.7
 [0.10.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.5...v0.10.6
 [0.10.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.4...v0.10.5

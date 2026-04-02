@@ -1,5 +1,7 @@
 import type { x402Client } from "@x402/fetch";
 import { decodePaymentResponseHeader, wrapFetchWithPayment } from "@x402/fetch";
+import { parseUnits } from "viem";
+import { getMppVoucherHeadroomUsdc, isDebugEnabled } from "./lib/env.js";
 
 export type PaymentInfo = {
   protocol: "x402";
@@ -127,6 +129,30 @@ export function createX402ProxyHandler(opts: X402ProxyOptions): X402ProxyHandler
 
 export const TEMPO_NETWORK = "eip155:4217";
 
+const MPP_VOUCHER_HEADROOM_USDC_DEFAULT = "0.005";
+
+export function computeMppVoucherTarget(params: {
+  requiredCumulative: bigint;
+  deposit: bigint;
+  headroom: bigint;
+}): bigint {
+  const { requiredCumulative, deposit, headroom } = params;
+  if (deposit <= requiredCumulative) return requiredCumulative;
+  if (headroom <= 0n) return requiredCumulative;
+  const target = requiredCumulative + headroom;
+  return target > deposit ? deposit : target;
+}
+
+function parseVoucherHeadroom(value: string | undefined): bigint {
+  const configured = value?.trim() || MPP_VOUCHER_HEADROOM_USDC_DEFAULT;
+  try {
+    const parsed = parseUnits(configured, 6);
+    return parsed > 0n ? parsed : 0n;
+  } catch {
+    return parseUnits(MPP_VOUCHER_HEADROOM_USDC_DEFAULT, 6);
+  }
+}
+
 // --- MPP handler ---
 
 /**
@@ -138,15 +164,17 @@ export async function createMppProxyHandler(opts: {
   maxDeposit?: string;
 }): Promise<MppProxyHandler> {
   const { Mppx, tempo } = await import("mppx/client");
+  const { Session } = await import("mppx/tempo");
   const { privateKeyToAccount } = await import("viem/accounts");
   const { saveSession, clearSession } = await import("./lib/config.js");
 
   const account = privateKeyToAccount(opts.evmKey as `0x${string}`);
   const maxDeposit = opts.maxDeposit ?? "1";
+  const voucherHeadroomRaw = parseVoucherHeadroom(getMppVoucherHeadroomUsdc());
   const paymentQueue: MppPaymentInfo[] = [];
   let lastChallengeAmount: string | undefined;
 
-  const debug = process.env.X402_PROXY_DEBUG === "1";
+  const debug = isDebugEnabled();
 
   const mppx = Mppx.create({
     methods: [tempo({ account, maxDeposit })],
@@ -170,9 +198,66 @@ export async function createMppProxyHandler(opts: {
     return { ...init, headers: { ...existing, "X-Payer-Address": payerAddress } };
   }
 
-  // Lazy session creation - only needed for SSE streaming
-  let session: ReturnType<typeof tempo.session> | undefined;
+  type SessionReceipt = {
+    method: string;
+    reference: string;
+    status: string;
+    timestamp: string;
+    acceptedCumulative?: string;
+    txHash?: string;
+    spent: string;
+  };
+  type ActiveSession = {
+    channelId?: string;
+    cumulative: bigint;
+    opened: boolean;
+    close: () => Promise<SessionReceipt | undefined>;
+  };
+  type CreateCredentialFn = (context?: Record<string, unknown>) => Promise<string>;
+  type ChannelEntry = {
+    channelId: string;
+    cumulativeAmount: bigint;
+    opened: boolean;
+  };
+
+  const activeSessions = new Set<ActiveSession>();
   let persistedChannelId: string | undefined;
+
+  function rememberSession(session: ActiveSession): void {
+    activeSessions.add(session);
+    if (session.channelId && session.channelId !== persistedChannelId) {
+      persistedChannelId = session.channelId;
+      if (debug) process.stderr.write(`[x402-proxy] channelId: ${persistedChannelId}\n`);
+      try {
+        saveSession({ channelId: session.channelId, createdAt: new Date().toISOString() });
+      } catch {
+        // Non-critical
+      }
+    }
+  }
+
+  function pushCloseReceipt(
+    session: ActiveSession,
+    receipt: Awaited<ReturnType<ActiveSession["close"]>>,
+  ) {
+    if (!receipt) return;
+    const spentUsdc = receipt.spent ? (Number(receipt.spent) / 1_000_000).toString() : undefined;
+    paymentQueue.push({
+      protocol: "mpp",
+      network: TEMPO_NETWORK,
+      intent: "session",
+      amount: spentUsdc,
+      channelId: session.channelId ?? undefined,
+      receipt: {
+        method: receipt.method,
+        reference: receipt.reference,
+        status: receipt.status,
+        timestamp: receipt.timestamp,
+        acceptedCumulative: receipt.acceptedCumulative,
+        txHash: receipt.txHash,
+      },
+    });
+  }
 
   return {
     // Non-streaming uses stateless one-shot charges (not sessions) - intentional.
@@ -210,60 +295,212 @@ export async function createMppProxyHandler(opts: {
     },
 
     async sse(input: string | URL, init?: RequestInit): Promise<AsyncIterable<string>> {
-      session ??= tempo.session({ account, maxDeposit });
       const url = typeof input === "string" ? input : input.toString();
-      const iterable = await session.sse(
+      let createCredential: CreateCredentialFn | undefined;
+      let spent = 0n;
+      const session: ActiveSession = {
+        channelId: undefined,
+        cumulative: 0n,
+        opened: false,
+        async close() {
+          if (!session.opened || !session.channelId || !createCredential) return undefined;
+
+          const credential = await createCredential({
+            action: "close",
+            channelId: session.channelId,
+            cumulativeAmountRaw: spent.toString(),
+          });
+          const response = await mppx.rawFetch(url, {
+            method: "POST",
+            headers: { Authorization: credential, "X-Payer-Address": payerAddress },
+          });
+          const receiptHeader = response.headers.get("Payment-Receipt");
+          if (!receiptHeader) return undefined;
+          try {
+            const receipt = Session.Receipt.deserializeSessionReceipt(receiptHeader);
+            spent = spent > BigInt(receipt.spent) ? spent : BigInt(receipt.spent);
+            return receipt;
+          } catch {
+            return undefined;
+          }
+        },
+      };
+
+      const sessionMppx = Mppx.create({
+        methods: [
+          tempo({
+            account,
+            maxDeposit,
+            onChannelUpdate(entry: ChannelEntry) {
+              session.channelId = entry.channelId;
+              session.cumulative = entry.cumulativeAmount;
+              session.opened = entry.opened;
+              if (entry.channelId && entry.channelId !== persistedChannelId) {
+                persistedChannelId = entry.channelId;
+                if (debug) process.stderr.write(`[x402-proxy] channelId: ${persistedChannelId}\n`);
+                try {
+                  saveSession({ channelId: entry.channelId, createdAt: new Date().toISOString() });
+                } catch {
+                  // Non-critical
+                }
+              }
+            },
+          }),
+        ],
+        polyfill: false,
+        onChallenge: async (challenge, helpers) => {
+          const req = challenge.request as { amount?: string; decimals?: number };
+          if (req.amount) {
+            lastChallengeAmount = (Number(req.amount) / 10 ** (req.decimals ?? 6)).toString();
+          }
+          createCredential = helpers.createCredential as CreateCredentialFn;
+          return undefined;
+        },
+      });
+
+      const response = await sessionMppx.fetch(
         url,
-        injectPayerHeader(init) as Parameters<typeof session.sse>[1],
+        injectPayerHeader({
+          ...init,
+          headers: {
+            ...((init?.headers instanceof Headers
+              ? Object.fromEntries(init.headers.entries())
+              : ((init?.headers as Record<string, string> | undefined) ?? {})) as Record<
+              string,
+              string
+            >),
+            Accept: "text/event-stream",
+          },
+        }),
       );
 
-      // Persist channelId for tracking. The server includes channelId in 402
-      // challenges for returning payers, so mppx auto-recovers on restart
-      // via tryRecoverChannel() without any client-side injection.
-      if (session.channelId && session.channelId !== persistedChannelId) {
-        persistedChannelId = session.channelId;
-        if (debug) process.stderr.write(`[x402-proxy] channelId: ${persistedChannelId}\n`);
+      if (!response.body) throw new Error("MPP SSE response has no body");
+      rememberSession(session);
+      paymentQueue.push({ protocol: "mpp", network: TEMPO_NETWORK, intent: "session" });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      async function* iterate(): AsyncGenerator<string> {
+        let buffer = "";
+
         try {
-          saveSession({ channelId: session.channelId, createdAt: new Date().toISOString() });
-        } catch {
-          // Non-critical
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() ?? "";
+
+            for (const part of parts) {
+              if (!part.trim()) continue;
+
+              const event = Session.Sse.parseEvent(part) as
+                | { type: "message"; data: string }
+                | {
+                    type: "payment-need-voucher";
+                    data: { channelId: string; requiredCumulative: string; deposit: string };
+                  }
+                | { type: "payment-receipt"; data: SessionReceipt }
+                | null;
+              if (!event) continue;
+
+              switch (event.type) {
+                case "message":
+                  yield event.data;
+                  break;
+                case "payment-receipt":
+                  spent = spent > BigInt(event.data.spent) ? spent : BigInt(event.data.spent);
+                  break;
+                case "payment-need-voucher": {
+                  if (!createCredential) {
+                    throw new Error("MPP voucher requested before challenge helper was captured");
+                  }
+
+                  const requiredCumulative = BigInt(event.data.requiredCumulative);
+                  const deposit = BigInt(event.data.deposit);
+                  const target = computeMppVoucherTarget({
+                    requiredCumulative,
+                    deposit,
+                    headroom: voucherHeadroomRaw,
+                  });
+                  const credential = await createCredential({
+                    action: "voucher",
+                    channelId: event.data.channelId,
+                    cumulativeAmountRaw: target.toString(),
+                  });
+                  const voucherResponse = await sessionMppx.rawFetch(url, {
+                    method: "POST",
+                    headers: { Authorization: credential, "X-Payer-Address": payerAddress },
+                    signal: init?.signal,
+                  });
+                  if (!voucherResponse.ok) {
+                    const body = await voucherResponse.text().catch(() => "");
+                    throw new Error(
+                      `Voucher POST failed with status ${voucherResponse.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+                    );
+                  }
+                  const receiptHeader = voucherResponse.headers.get("Payment-Receipt");
+                  if (receiptHeader) {
+                    try {
+                      const receipt = Session.Receipt.deserializeSessionReceipt(receiptHeader);
+                      spent = spent > BigInt(receipt.spent) ? spent : BigInt(receipt.spent);
+                    } catch {
+                      // Ignore malformed receipt headers on voucher updates.
+                    }
+                  }
+                  break;
+                }
+              }
+            }
+          }
+        } finally {
+          reader.releaseLock();
         }
       }
 
-      paymentQueue.push({ protocol: "mpp", network: TEMPO_NETWORK, intent: "session" });
-      return iterable;
+      return iterate();
     },
 
     shiftPayment: () => paymentQueue.shift(),
 
     async close(): Promise<void> {
-      if (session?.opened) {
+      const sessions = Array.from(activeSessions);
+      if (sessions.length === 0) return;
+
+      const byChannelId = new Map<string, ActiveSession>();
+      const sessionsWithoutChannel: ActiveSession[] = [];
+
+      for (const session of sessions) {
+        if (!session.opened) continue;
+        if (!session.channelId) {
+          sessionsWithoutChannel.push(session);
+          continue;
+        }
+        const existing = byChannelId.get(session.channelId);
+        if (!existing || session.cumulative > existing.cumulative) {
+          byChannelId.set(session.channelId, session);
+        }
+      }
+
+      for (const session of sessions) activeSessions.delete(session);
+
+      const sessionsToClose = [...byChannelId.values(), ...sessionsWithoutChannel];
+      let shouldClearPersistedSession = false;
+      for (const session of sessionsToClose) {
         const receipt = await session.close();
+        if (session.channelId && session.channelId === persistedChannelId) {
+          shouldClearPersistedSession = true;
+        }
+        pushCloseReceipt(session, receipt);
+      }
+
+      if (shouldClearPersistedSession) {
         try {
           clearSession();
         } catch {
           // Non-critical
-        }
-        if (receipt) {
-          // spent is in USDC base units (6 decimals)
-          const spentUsdc = receipt.spent
-            ? (Number(receipt.spent) / 1_000_000).toString()
-            : undefined;
-          paymentQueue.push({
-            protocol: "mpp",
-            network: TEMPO_NETWORK,
-            intent: "session",
-            amount: spentUsdc,
-            channelId: session.channelId ?? undefined,
-            receipt: {
-              method: receipt.method,
-              reference: receipt.reference,
-              status: receipt.status,
-              timestamp: receipt.timestamp,
-              acceptedCumulative: receipt.acceptedCumulative,
-              txHash: receipt.txHash,
-            },
-          });
         }
       }
     },

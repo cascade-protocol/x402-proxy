@@ -11,7 +11,7 @@ import {
 } from "../handler.js";
 import { getHistoryPath } from "../lib/config.js";
 import { OptimizedSvmScheme } from "../lib/optimized-svm-scheme.js";
-import { resolveWallet } from "../lib/resolve-wallet.js";
+import { resolveWallet } from "../lib/wallet-resolution.js";
 import { loadSvmWallet } from "../wallet.js";
 import { createSendCommand, createWalletCommand } from "./commands.js";
 import { resolveProviders, routePrefixForBaseUrl } from "./defaults.js";

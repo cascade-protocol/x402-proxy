@@ -7,10 +7,13 @@
     "check": "turbo run build type-check test && biome check --write",
     "lint": "biome check --write",
     "build": "turbo run build",
+    "stage:release": "pnpm --filter x402-proxy stage:release",
+    "verify:release": "node scripts/verify-staged-x402-packages.mjs",
     "test": "vitest --project x402-proxy"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.9",
+    "tsdown": "^0.21.5",
     "turbo": "^2.8.20",
     "typescript": "^6.0.2",
     "vitest": "^4.1.1"

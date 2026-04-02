@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { detectProtocols, extractTxSignature } from "./handler.js";
+import { computeMppVoucherTarget, detectProtocols, extractTxSignature } from "./handler.js";
 
 describe("detectProtocols", () => {
   it("detects MPP from WWW-Authenticate Payment header", () => {
@@ -69,5 +69,37 @@ describe("extractTxSignature", () => {
   it("returns undefined when no payment headers present", () => {
     const r = new Response(null);
     expect(extractTxSignature(r)).toBeUndefined();
+  });
+});
+
+describe("computeMppVoucherTarget", () => {
+  it("adds voucher headroom when deposit allows it", () => {
+    expect(
+      computeMppVoucherTarget({
+        requiredCumulative: 1_000_000n,
+        deposit: 10_000_000n,
+        headroom: 5_000_000n,
+      }),
+    ).toBe(6_000_000n);
+  });
+
+  it("clamps the target to deposit", () => {
+    expect(
+      computeMppVoucherTarget({
+        requiredCumulative: 8_000_000n,
+        deposit: 10_000_000n,
+        headroom: 5_000_000n,
+      }),
+    ).toBe(10_000_000n);
+  });
+
+  it("falls back to the required cumulative amount when no headroom is available", () => {
+    expect(
+      computeMppVoucherTarget({
+        requiredCumulative: 3_000_000n,
+        deposit: 3_000_000n,
+        headroom: 5_000_000n,
+      }),
+    ).toBe(3_000_000n);
   });
 });
