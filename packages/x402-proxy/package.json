@@ -1,7 +1,7 @@
 {
   "name": "x402-proxy",
   "private": true,
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo.",
   "type": "module",
   "sideEffects": false,
