@@ -38,10 +38,10 @@ ANTHROPIC_BASE_URL pointed at it. All inference requests go through
 the proxy, which handles payments automatically via MPP.
 
 Usage:
-  $ x402-proxy claude                           Start with default model
-  $ x402-proxy claude --model z-ai/glm-5        Use a specific model
-  $ x402-proxy claude -- --print "explain this" Pass args to Claude Code
-  $ x402-proxy claude -- -p "summarize *.ts"    Print mode (non-interactive)
+  $ npx x402-proxy claude                           Start with default model
+  $ npx x402-proxy claude --model z-ai/glm-5        Use a specific model
+  $ npx x402-proxy claude -- --print "explain this" Pass args to Claude Code
+  $ npx x402-proxy claude -- -p "summarize *.ts"    Print mode (non-interactive)
 
 Available models (via surf.cascade.fyi):
 ${modelList}

@@ -17,11 +17,19 @@ import { sha512 } from "@noble/hashes/sha2.js";
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { base58 } from "@scure/base";
 import { HDKey } from "@scure/bip32";
-import { generateMnemonic as bip39Generate, mnemonicToSeedSync } from "@scure/bip39";
+import {
+  generateMnemonic as bip39Generate,
+  mnemonicToSeedSync,
+  validateMnemonic,
+} from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 
 export function generateMnemonic(): string {
   return bip39Generate(wordlist, 256); // 24 words
+}
+
+export function isValidMnemonic(mnemonic: string): boolean {
+  return validateMnemonic(mnemonic, wordlist);
 }
 
 /**

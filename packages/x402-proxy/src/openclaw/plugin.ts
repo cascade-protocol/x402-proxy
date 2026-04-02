@@ -2,14 +2,19 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createKeyPairSignerFromBytes, type KeyPairSigner } from "@solana/kit";
 import { x402Client } from "@x402/fetch";
-import { definePluginEntry, type OpenClawPluginApi } from "openclaw/plugin-sdk/plugin-entry";
+import {
+  definePluginEntry,
+  type OpenClawPluginApi,
+  type ProviderAuthMethod,
+} from "openclaw/plugin-sdk/plugin-entry";
 import {
   createMppProxyHandler,
   createX402ProxyHandler,
   type MppProxyHandler,
   type X402ProxyHandler,
 } from "../handler.js";
-import { getHistoryPath } from "../lib/config.js";
+import { createWalletFile, getHistoryPath, getWalletPath, saveWalletFile } from "../lib/config.js";
+import { generateMnemonic, isValidMnemonic } from "../lib/derive.js";
 import { OptimizedSvmScheme } from "../lib/optimized-svm-scheme.js";
 import { resolveWallet } from "../lib/wallet-resolution.js";
 import { loadSvmWallet } from "../wallet.js";
@@ -28,11 +33,90 @@ export function register(api: OpenClawPluginApi): void {
   const { providers, models: allModels } = resolveProviders(config);
   const defaultProvider = providers[0];
 
+  const walletAuthMethod: ProviderAuthMethod = {
+    id: "wallet-setup",
+    label: "x402-proxy wallet setup",
+    hint: "Generate or import a crypto wallet for paid inference",
+    kind: "custom",
+    run: async (ctx) => {
+      const existing = resolveWallet();
+      if (existing.source !== "none") {
+        const addresses = [
+          existing.evmAddress ? `EVM: ${existing.evmAddress}` : null,
+          existing.solanaAddress ? `Solana: ${existing.solanaAddress}` : null,
+        ]
+          .filter(Boolean)
+          .join("\n");
+        await ctx.prompter.note(
+          `Wallet already configured (source: ${existing.source}).\n\n${addresses}`,
+          "x402-proxy wallet",
+        );
+        return { profiles: [] };
+      }
+
+      const action = await ctx.prompter.select({
+        message: "How would you like to set up your x402-proxy wallet?",
+        options: [
+          { value: "generate" as const, label: "Generate a new wallet" },
+          { value: "import" as const, label: "Import an existing BIP-39 mnemonic" },
+        ],
+      });
+
+      let mnemonic: string;
+      if (action === "import") {
+        mnemonic = await ctx.prompter.text({
+          message: "Enter your BIP-39 mnemonic (12 or 24 words):",
+          validate: (v) => {
+            const words = String(v ?? "")
+              .trim()
+              .split(/\s+/);
+            if (words.length !== 12 && words.length !== 24)
+              return "Mnemonic must be 12 or 24 words";
+            if (!isValidMnemonic(words.join(" ")))
+              return "Invalid BIP-39 mnemonic. Check the words and try again.";
+          },
+        });
+        mnemonic = String(mnemonic).trim();
+      } else {
+        mnemonic = generateMnemonic();
+      }
+
+      const wallet = createWalletFile(mnemonic);
+      saveWalletFile(wallet);
+
+      const msg = [
+        `EVM:    ${wallet.addresses.evm}`,
+        `Solana: ${wallet.addresses.solana}`,
+        "",
+        `Wallet saved to ${getWalletPath()}`,
+        "",
+        "Fund these addresses with USDC to start using paid inference.",
+        action === "generate"
+          ? "\nRecover your mnemonic later with: npx x402-proxy wallet export-key mnemonic"
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+      await ctx.prompter.note(msg, "Wallet created");
+
+      return {
+        profiles: [
+          {
+            profileId: "surf:x402-proxy",
+            credential: { type: "api_key", provider: "surf", key: "x402-proxy-managed" },
+          },
+        ],
+      };
+    },
+  };
+
   for (const provider of providers) {
+    const isFirst = provider === providers[0];
     api.registerProvider({
       id: provider.id,
       label: provider.id,
-      auth: [],
+      auth: isFirst ? [walletAuthMethod] : [],
+      resolveConfigApiKey: () => "x402-proxy-managed",
       catalog: {
         order: "simple",
         run: async () => ({
@@ -84,10 +168,27 @@ export function register(api: OpenClawPluginApi): void {
     });
   }
   api.logger.info(
-    `proxy: HTTP routes ${routePrefixes.join(", ")} registered for ${providers.map((provider) => provider.upstreamUrl).join(", ")}`,
+    `x402-proxy: HTTP routes ${routePrefixes.join(", ")} registered for ${providers.map((provider) => provider.upstreamUrl).join(", ")}`,
   );
 
-  async function ensureWalletLoaded(): Promise<void> {
+  async function ensureWalletLoaded(opts?: { reload?: boolean }): Promise<void> {
+    if (opts?.reload) {
+      if (mppHandlerRef) {
+        try {
+          await mppHandlerRef.close();
+        } catch {
+          // best effort
+        }
+      }
+      walletLoadPromise = null;
+      solanaWalletAddress = null;
+      evmWalletAddress = null;
+      signerRef = null;
+      proxyRef = null;
+      mppHandlerRef = null;
+      evmKeyRef = null;
+    }
+
     if (walletLoadPromise) {
       await walletLoadPromise;
       return;
@@ -115,7 +216,7 @@ export function register(api: OpenClawPluginApi): void {
 
         if (!solanaWalletAddress && !evmWalletAddress) {
           api.logger.error(
-            "x402-proxy: no wallet found. Run `x402-proxy setup` to create one, or set X402_PROXY_WALLET_MNEMONIC / X402_PROXY_WALLET_EVM_KEY.",
+            "x402-proxy: no wallet found. Use /x_wallet setup or run `npx x402-proxy setup` on the host.",
           );
           return;
         }

@@ -5,7 +5,7 @@
 ## Quick Start
 
 ```bash
-npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user
+npx x402-proxy https://surf.cascade.fyi/api/v1/twitter/user/openclaw
 ```
 
 That's it. The endpoint returns 402, x402-proxy pays and streams the response.
@@ -52,8 +52,8 @@ openclaw mcp set surf '{"command":"npx","args":["-y","x402-proxy","mcp","https:/
 Works like curl. Response body streams to stdout, payment info goes to stderr.
 
 ```bash
-# POST request
-$ npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user
+# GET request
+$ npx x402-proxy https://surf.cascade.fyi/api/v1/twitter/user/openclaw
 
 # POST with body and headers (curl-style short flags: -X, -H, -d)
 $ npx x402-proxy -X POST \

@@ -2,9 +2,20 @@
   "id": "x402-proxy",
   "name": "mpp/x402 Payments Proxy",
   "description": "x402 and MPP payments, wallet tools, and paid inference proxying",
-  "version": "0.10.8",
   "providers": ["surf"],
   "autoEnableWhenConfiguredProviders": ["surf"],
+  "providerAuthChoices": [
+    {
+      "provider": "surf",
+      "method": "wallet-setup",
+      "choiceId": "x402-wallet-setup",
+      "choiceLabel": "x402-proxy wallet",
+      "choiceHint": "Generate or import a crypto wallet for paid inference",
+      "groupId": "x402-proxy",
+      "groupLabel": "x402-proxy",
+      "groupHint": "Crypto wallet for x402/MPP payments"
+    }
+  ],
   "skills": ["skills"],
   "contracts": {
     "tools": ["x_wallet", "x_balance", "x_request", "x_payment"]

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { deriveEvmKeypair, deriveSolanaKeypair } from "./derive.js";
 
 export type ProxyConfig = {
   defaultNetwork?: string;
@@ -60,6 +61,12 @@ export function loadWalletFile(): WalletFile | null {
   } catch {
     return null;
   }
+}
+
+export function createWalletFile(mnemonic: string): WalletFile {
+  const evm = deriveEvmKeypair(mnemonic);
+  const sol = deriveSolanaKeypair(mnemonic);
+  return { version: 1, mnemonic, addresses: { evm: evm.address, solana: sol.address } };
 }
 
 export function saveWalletFile(wallet: WalletFile): void {

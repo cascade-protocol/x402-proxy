@@ -224,9 +224,9 @@ export const serveCommand = buildCommand<ServeFlags, [upstreamUrl?: string], Com
     fullDescription: `Start a local HTTP proxy that forwards inference requests upstream and auto-pays x402 or MPP 402 challenges.
 
 Examples:
-  $ x402-proxy serve
-  $ x402-proxy serve --port 8402
-  $ x402-proxy serve https://surf.cascade.fyi/api/v1/inference --protocol mpp`,
+  $ npx x402-proxy serve
+  $ npx x402-proxy serve --port 8402
+  $ npx x402-proxy serve https://surf.cascade.fyi/api/v1/inference --protocol mpp`,
   },
   parameters: {
     flags: {

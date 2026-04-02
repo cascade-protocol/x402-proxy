@@ -41,7 +41,7 @@ export type ModelEntry = {
 };
 
 export type ToolContext = {
-  ensureReady: () => Promise<void>;
+  ensureReady: (opts?: { reload?: boolean }) => Promise<void>;
   getSolanaWalletAddress: () => string | null;
   getEvmWalletAddress: () => string | null;
   getSigner: () => KeyPairSigner | null;

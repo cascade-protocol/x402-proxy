@@ -2,6 +2,7 @@ import * as prompts from "@clack/prompts";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
 import {
+  createWalletFile,
   getConfigDirShort,
   getWalletPath,
   isConfigured,
@@ -9,9 +10,8 @@ import {
   type ProxyConfig,
   saveConfig,
   saveWalletFile,
-  type WalletFile,
 } from "../lib/config.js";
-import { deriveEvmKeypair, deriveSolanaKeypair, generateMnemonic } from "../lib/derive.js";
+import { generateMnemonic } from "../lib/derive.js";
 
 export async function runSetup(opts?: {
   force?: boolean;
@@ -53,19 +53,12 @@ export async function runSetup(opts?: {
       mnemonic = generateMnemonic();
     }
 
-    const evm = deriveEvmKeypair(mnemonic);
-    const sol = deriveSolanaKeypair(mnemonic);
-
-    const wallet: WalletFile = {
-      version: 1,
-      mnemonic,
-      addresses: { evm: evm.address, solana: sol.address },
-    };
+    const wallet = createWalletFile(mnemonic);
     saveWalletFile(wallet);
     saveConfig({ preferredProtocol: "x402" });
 
     process.stdout.write(
-      `${JSON.stringify({ base: evm.address, tempo: evm.address, solana: sol.address })}\n`,
+      `${JSON.stringify({ base: wallet.addresses.evm, tempo: wallet.addresses.evm, solana: wallet.addresses.solana })}\n`,
     );
     return;
   }
@@ -109,18 +102,11 @@ export async function runSetup(opts?: {
     mnemonic = (input as string).trim();
   }
 
-  const evm = deriveEvmKeypair(mnemonic);
-  const sol = deriveSolanaKeypair(mnemonic);
+  const wallet = createWalletFile(mnemonic);
 
-  prompts.log.success(`Base address:   ${pc.green(evm.address)}`);
-  prompts.log.success(`Tempo address:  ${pc.green(evm.address)}`);
-  prompts.log.success(`Solana address: ${pc.green(sol.address)}`);
-
-  const wallet: WalletFile = {
-    version: 1,
-    mnemonic,
-    addresses: { evm: evm.address, solana: sol.address },
-  };
+  prompts.log.success(`Base address:   ${pc.green(wallet.addresses.evm)}`);
+  prompts.log.success(`Tempo address:  ${pc.green(wallet.addresses.evm)}`);
+  prompts.log.success(`Solana address: ${pc.green(wallet.addresses.solana)}`);
 
   saveWalletFile(wallet);
 
@@ -167,12 +153,12 @@ export async function runSetup(opts?: {
   prompts.log.info(`Config directory: ${pc.dim(getConfigDirShort())}`);
 
   prompts.log.step("Fund your wallets to start using x402 resources:");
-  prompts.log.message(`  Solana (USDC): Send USDC to ${pc.cyan(sol.address)}`);
-  prompts.log.message(`  Base (USDC):   Send USDC to ${pc.cyan(evm.address)}`);
+  prompts.log.message(`  Solana (USDC): Send USDC to ${pc.cyan(wallet.addresses.solana)}`);
+  prompts.log.message(`  Base (USDC):   Send USDC to ${pc.cyan(wallet.addresses.evm)}`);
 
   prompts.log.step("Try your first request:");
   prompts.log.message(
-    `  ${pc.cyan(`$ npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user`)}`,
+    `  ${pc.cyan(`$ npx x402-proxy https://surf.cascade.fyi/api/v1/twitter/user/openclaw`)}`,
   );
 
   prompts.outro(pc.green("Setup complete!"));

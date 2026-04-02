@@ -10,7 +10,7 @@ description: Use x402-proxy CLI for consuming and debugging x402 and MPP paid AP
 ## Quick start
 
 ```bash
-npx x402-proxy -X POST -d '{"ref":"CoinbaseDev"}' https://surf.cascade.fyi/api/v1/twitter/user
+npx x402-proxy https://surf.cascade.fyi/api/v1/twitter/user/openclaw
 ```
 
 First run auto-creates a wallet. No setup needed.

@@ -1,5 +1,7 @@
 import type { KeyPairSigner } from "@solana/kit";
 import { appendHistory, formatTxLine, readHistory } from "../history.js";
+import { createWalletFile, getWalletPath, saveWalletFile } from "../lib/config.js";
+import { generateMnemonic, isValidMnemonic } from "../lib/derive.js";
 import type { PaymentProtocol } from "./defaults.js";
 import { checkAtaExists, getUsdcBalance, transferUsdc } from "./solana.js";
 import { getWalletSnapshot, type ModelEntry, SOL_MAINNET } from "./tools.js";
@@ -61,7 +63,7 @@ async function resolveTokenSymbols(mints: string[]): Promise<Map<string, string>
 }
 
 export type CommandContext = {
-  ensureReady: () => Promise<void>;
+  ensureReady: (opts?: { reload?: boolean }) => Promise<void>;
   getSolanaWalletAddress: () => string | null;
   getEvmWalletAddress: () => string | null;
   getSigner: () => KeyPairSigner | null;
@@ -201,6 +203,58 @@ function handleHistory(histPath: string, page: number): { text: string } {
   return { text: lines.join("\n") };
 }
 
+async function handleSetup(ctx: CommandContext, parts: string[]): Promise<{ text: string }> {
+  const action = parts[0]?.toLowerCase();
+
+  let mnemonic: string | null = null;
+  if (action === "generate") {
+    mnemonic = generateMnemonic();
+  } else if (action === "import") {
+    const words = parts.slice(1);
+    if (words.length !== 12 && words.length !== 24) {
+      return {
+        text: "Mnemonic must be 12 or 24 words.\nUsage: `/x_wallet setup import word1 word2 ... word24`",
+      };
+    }
+    mnemonic = words.join(" ");
+    if (!isValidMnemonic(mnemonic)) {
+      return { text: "Invalid BIP-39 mnemonic. Check the words and try again." };
+    }
+  }
+
+  if (!mnemonic) {
+    return {
+      text: [
+        "No wallet configured.",
+        "",
+        "  `/x_wallet setup generate` - generate a new wallet",
+        "  `/x_wallet setup import <mnemonic>` - import a BIP-39 mnemonic (12 or 24 words)",
+      ].join("\n"),
+    };
+  }
+
+  const wallet = createWalletFile(mnemonic);
+  saveWalletFile(wallet);
+  await ctx.ensureReady({ reload: true });
+
+  const lines = [
+    action === "generate" ? "Wallet generated." : "Wallet imported.",
+    "",
+    `**EVM**: \`${wallet.addresses.evm}\``,
+    `**Solana**: \`${wallet.addresses.solana}\``,
+    "",
+    `Saved to \`${getWalletPath()}\``,
+  ];
+  if (action === "generate") {
+    lines.push(
+      "Fund these addresses with USDC to start using paid tools.",
+      "",
+      "Recover mnemonic later: `npx x402-proxy wallet export-key mnemonic`",
+    );
+  }
+  return { text: lines.join("\n") };
+}
+
 export function createWalletCommand(ctx: CommandContext) {
   return {
     name: "x_wallet",
@@ -209,18 +263,22 @@ export function createWalletCommand(ctx: CommandContext) {
     requireAuth: true,
     handler: async (cmdCtx: SlashCommandContext) => {
       await ctx.ensureReady();
-      const solanaWallet = ctx.getSolanaWalletAddress();
-      const evmWallet = ctx.getEvmWalletAddress();
-      if (!solanaWallet && !evmWallet) {
-        return {
-          text: "Wallet not configured yet.\nRun `x402-proxy setup` or set `X402_PROXY_WALLET_MNEMONIC` on the gateway host.",
-        };
-      }
 
       const args = cmdCtx.args?.trim() ?? "";
       const parts = args.split(/\s+/).filter(Boolean);
+      const sub = parts[0]?.toLowerCase();
 
-      if (parts[0]?.toLowerCase() === "history") {
+      if (sub === "setup") {
+        return handleSetup(ctx, parts.slice(1));
+      }
+
+      const solanaWallet = ctx.getSolanaWalletAddress();
+      const evmWallet = ctx.getEvmWalletAddress();
+      if (!solanaWallet && !evmWallet) {
+        return handleSetup(ctx, []);
+      }
+
+      if (sub === "history") {
         const pageArg = parts[1];
         const page = pageArg ? Math.max(1, Number.parseInt(pageArg, 10) || 1) : 1;
         return handleHistory(ctx.historyPath, page);
@@ -234,10 +292,6 @@ export function createWalletCommand(ctx: CommandContext) {
         const snap = await getWalletSnapshot(ctx.rpcUrl, solanaWallet, evmWallet, ctx.historyPath);
 
         const lines: string[] = [`x402-proxy v${__VERSION__}`];
-        const defaultModel = ctx.allModels[0];
-        if (defaultModel) {
-          lines.push("", `**Model** - ${defaultModel.name} (${defaultModel.provider})`);
-        }
 
         lines.push("", `**Protocol** - ${ctx.getDefaultRequestProtocol()}`);
         lines.push(`MPP session budget: ${ctx.getDefaultMppSessionBudget()} USDC`);

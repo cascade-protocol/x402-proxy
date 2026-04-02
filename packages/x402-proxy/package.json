@@ -1,7 +1,7 @@
 {
   "name": "x402-proxy",
   "private": true,
-  "version": "0.10.12",
+  "version": "0.11.0",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo.",
   "type": "module",
   "sideEffects": false,
@@ -26,12 +26,12 @@
       "surf"
     ],
     "compat": {
-      "pluginApi": ">=2026.3.24",
-      "minGatewayVersion": "2026.3.24"
+      "pluginApi": ">=2026.4.1",
+      "minGatewayVersion": "2026.4.1"
     },
     "build": {
-      "openclawVersion": "2026.3.24",
-      "pluginSdkVersion": "2026.3.24"
+      "openclawVersion": "2026.4.1",
+      "pluginSdkVersion": "2026.4.1"
     }
   },
   "bin": {
@@ -71,7 +71,7 @@
     "yaml": "^2.8.3"
   },
   "peerDependencies": {
-    "openclaw": ">=2026.3.8"
+    "openclaw": ">=2026.3.24"
   },
   "peerDependenciesMeta": {
     "openclaw": {
@@ -80,7 +80,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
-    "openclaw": "^2026.3.24",
+    "openclaw": "^2026.4.1",
     "publint": "^0.3.18",
     "tsdown": "^0.21.5",
     "typescript": "^5.9.3",

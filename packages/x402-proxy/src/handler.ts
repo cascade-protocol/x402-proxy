@@ -1,6 +1,10 @@
 import type { x402Client } from "@x402/fetch";
 import { decodePaymentResponseHeader, wrapFetchWithPayment } from "@x402/fetch";
+import { Mppx, tempo } from "mppx/client";
+import { Session } from "mppx/tempo";
 import { parseUnits } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { clearSession, saveSession } from "./lib/config.js";
 import { getMppVoucherHeadroomUsdc, isDebugEnabled } from "./lib/env.js";
 
 export type PaymentInfo = {
@@ -157,17 +161,11 @@ function parseVoucherHeadroom(value: string | undefined): bigint {
 
 /**
  * Create an MPP proxy handler using mppx client.
- * Dynamically imports mppx/client to keep startup fast.
  */
 export async function createMppProxyHandler(opts: {
   evmKey: string;
   maxDeposit?: string;
 }): Promise<MppProxyHandler> {
-  const { Mppx, tempo } = await import("mppx/client");
-  const { Session } = await import("mppx/tempo");
-  const { privateKeyToAccount } = await import("viem/accounts");
-  const { saveSession, clearSession } = await import("./lib/config.js");
-
   const account = privateKeyToAccount(opts.evmKey as `0x${string}`);
   const maxDeposit = opts.maxDeposit ?? "1";
   const voucherHeadroomRaw = parseVoucherHeadroom(getMppVoucherHeadroomUsdc());
