@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.2] - 2026-04-02
+
+### Fixed
+
+- Strip surrounding quotes from mnemonic in `/x_wallet setup import` (Telegram copy-paste)
+- Show actual word count in mnemonic validation errors
+
 ## [0.11.1] - 2026-04-02
 
 ### Fixed
@@ -37,6 +44,7 @@ All notable changes to this project will be documented in this file.
 - Strip `outputSchema` from proxied MCP tool definitions
 - Downgrade @modelcontextprotocol/sdk to 1.27.1 for compatibility
 
+[0.11.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.12...v0.11.0
 [0.10.12]: https://github.com/cascade-protocol/x402-proxy/releases/tag/v0.10.12

@@ -203,6 +203,22 @@ function handleHistory(histPath: string, page: number): { text: string } {
   return { text: lines.join("\n") };
 }
 
+/** Parse mnemonic from import args, stripping surrounding quotes. Returns error string or clean mnemonic. */
+export function parseMnemonicImport(parts: string[]): { mnemonic: string } | { error: string } {
+  const raw = parts.join(" ").replace(/^["'""\u201C\u201D]+|["'""\u201C\u201D]+$/g, "");
+  const words = raw.split(/\s+/).filter(Boolean);
+  if (words.length !== 12 && words.length !== 24) {
+    return {
+      error: `Mnemonic must be 12 or 24 words (got ${words.length}).\nUsage: \`/x_wallet setup import word1 word2 ... word24\``,
+    };
+  }
+  const mnemonic = words.join(" ");
+  if (!isValidMnemonic(mnemonic)) {
+    return { error: "Invalid BIP-39 mnemonic. Check the words and try again." };
+  }
+  return { mnemonic };
+}
+
 async function handleSetup(ctx: CommandContext, parts: string[]): Promise<{ text: string }> {
   const action = parts[0]?.toLowerCase();
 
@@ -210,16 +226,9 @@ async function handleSetup(ctx: CommandContext, parts: string[]): Promise<{ text
   if (action === "generate") {
     mnemonic = generateMnemonic();
   } else if (action === "import") {
-    const words = parts.slice(1);
-    if (words.length !== 12 && words.length !== 24) {
-      return {
-        text: "Mnemonic must be 12 or 24 words.\nUsage: `/x_wallet setup import word1 word2 ... word24`",
-      };
-    }
-    mnemonic = words.join(" ");
-    if (!isValidMnemonic(mnemonic)) {
-      return { text: "Invalid BIP-39 mnemonic. Check the words and try again." };
-    }
+    const result = parseMnemonicImport(parts.slice(1));
+    if ("error" in result) return { text: result.error };
+    mnemonic = result.mnemonic;
   }
 
   if (!mnemonic) {
