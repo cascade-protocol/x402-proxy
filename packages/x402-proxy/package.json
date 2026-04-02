@@ -1,7 +1,7 @@
 {
   "name": "x402-proxy",
   "private": true,
-  "version": "0.10.9",
+  "version": "0.10.10",
   "description": "curl for x402 paid APIs. Auto-pays any endpoint on Base, Solana, and Tempo.",
   "type": "module",
   "sideEffects": false,
@@ -49,7 +49,7 @@
   "dependencies": {
     "@clack/prompts": "^1.1.0",
     "@getmcp/generators": "^0.10.1",
-    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@modelcontextprotocol/sdk": "~1.27.1",
     "@noble/curves": "^2.0.1",
     "@noble/hashes": "^2.0.1",
     "@scure/base": "^2.0.0",
