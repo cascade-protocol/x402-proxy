@@ -9,8 +9,8 @@ import {
   mainnet,
   partiallySignTransactionMessageWithSigners,
   pipe,
+  prependTransactionMessageInstruction,
   SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR,
-  setTransactionMessageComputeUnitLimit,
   setTransactionMessageComputeUnitPrice,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -24,8 +24,17 @@ import {
 import type { PaymentRequirements, SchemeNetworkClient } from "@x402/core/types";
 
 const MEMO_PROGRAM_ADDRESS: Address = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" as Address;
+const COMPUTE_BUDGET_PROGRAM: Address = "ComputeBudget111111111111111111111111111111" as Address;
 const COMPUTE_UNIT_LIMIT = 20_000;
 const COMPUTE_UNIT_PRICE_MICROLAMPORTS = 1n;
+
+/** Build a SetComputeUnitLimit instruction (discriminator 0x02 + u32 LE). */
+function getSetComputeUnitLimitInstruction(units: number) {
+  const data = new Uint8Array(5);
+  data[0] = 0x02;
+  new DataView(data.buffer).setUint32(1, units, true);
+  return { programAddress: COMPUTE_BUDGET_PROGRAM, accounts: [] as const, data };
+}
 
 const USDC_MINT: Address = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" as Address;
 const USDC_DECIMALS = 6;
@@ -151,8 +160,12 @@ export class OptimizedSvmScheme implements SchemeNetworkClient {
     const tx = pipe(
       createTransactionMessage({ version: 0 }),
       (tx) => setTransactionMessageComputeUnitPrice(COMPUTE_UNIT_PRICE_MICROLAMPORTS, tx),
-      (tx) => setTransactionMessageComputeUnitLimit(COMPUTE_UNIT_LIMIT, tx),
       (tx) => setTransactionMessageFeePayer(feePayer, tx),
+      (tx) =>
+        prependTransactionMessageInstruction(
+          getSetComputeUnitLimitInstruction(COMPUTE_UNIT_LIMIT),
+          tx,
+        ),
       (tx) => appendTransactionMessageInstructions([transferIx, memoIx], tx),
       (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
     );
