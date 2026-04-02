@@ -8,7 +8,7 @@ import {
 } from "./mcp.js";
 
 describe("cloneTool", () => {
-  it("preserves outputSchema and extra tool metadata", () => {
+  it("strips outputSchema and preserves other tool metadata", () => {
     const tool = {
       name: "surf_web_search",
       title: "Web Search",
@@ -23,7 +23,16 @@ describe("cloneTool", () => {
       execution: { taskSupport: "optional" },
     };
 
-    expect(cloneTool(tool)).toEqual(tool);
+    const cloned = cloneTool(tool);
+    expect(cloned).not.toHaveProperty("outputSchema");
+    expect(cloned).toEqual({
+      name: "surf_web_search",
+      title: "Web Search",
+      description: "Search the web",
+      inputSchema: { type: "object" },
+      annotations: { readOnlyHint: true },
+      execution: { taskSupport: "optional" },
+    });
   });
 });
 

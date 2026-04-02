@@ -56,7 +56,10 @@ const X402_PAYMENT_META_KEY = "x402/payment";
 const X402_PAYMENT_RESPONSE_META_KEY = "x402/payment-response";
 
 export function cloneTool(tool: ToolDefinition): ToolDefinition {
-  return { ...tool };
+  // Strip outputSchema so downstream clients don't attempt AJV validation
+  // of structuredContent — the proxy passes data through as-is.
+  const { outputSchema: _, ...rest } = tool as ToolDefinition & { outputSchema?: unknown };
+  return rest as ToolDefinition;
 }
 
 export function cloneResource(resource: ResourceDefinition): ResourceDefinition {
