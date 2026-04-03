@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.4] - 2026-04-03
+
+### Added
+
+- Model catalog: Claude Opus 4.5, Claude Sonnet 4.5, Grok 4.1 Fast, MiniMax M2.7
+
+### Changed
+
+- Refactor model defaults from array to record-based `MODEL_METADATA` lookup
+- Provider auth now returns config patch when wallet already exists (fixes missing provider config on re-setup)
+- Remove `autoEnableWhenConfiguredProviders` from plugin manifest (unnecessary for explicitly installed plugins)
+
 ## [0.11.3] - 2026-04-03
 
 ### Changed
@@ -52,6 +64,7 @@ All notable changes to this project will be documented in this file.
 - Strip `outputSchema` from proxied MCP tool definitions
 - Downgrade @modelcontextprotocol/sdk to 1.27.1 for compatibility
 
+[0.11.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.0...v0.11.1
