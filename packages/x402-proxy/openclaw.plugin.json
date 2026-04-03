@@ -3,7 +3,6 @@
   "name": "mpp/x402 Payments Proxy",
   "description": "x402 and MPP payments, wallet tools, and paid inference proxying",
   "providers": ["surf"],
-  "autoEnableWhenConfiguredProviders": ["surf"],
   "providerAuthChoices": [
     {
       "provider": "surf",
