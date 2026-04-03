@@ -25,9 +25,9 @@ export const DEFAULT_SURF_UPSTREAM_URL = "https://surf.cascade.fyi/api/v1/infere
 export const DEFAULT_PROVIDER_PROTOCOL: PaymentProtocol = "mpp";
 export const DEFAULT_MPP_SESSION_BUDGET = "0.5";
 
-export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> = [
-  {
-    id: "anthropic/claude-opus-4.6",
+/** Known model metadata for cost/capability enrichment. */
+const MODEL_METADATA: Record<string, Omit<ModelEntry, "provider" | "id">> = {
+  "anthropic/claude-opus-4.6": {
     name: "Claude Opus 4.6",
     maxTokens: 200000,
     reasoning: true,
@@ -35,8 +35,15 @@ export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> = [
     cost: { input: 0.015, output: 0.075, cacheRead: 0.0015, cacheWrite: 0.01875 },
     contextWindow: 200000,
   },
-  {
-    id: "anthropic/claude-sonnet-4.6",
+  "anthropic/claude-opus-4.5": {
+    name: "Claude Opus 4.5",
+    maxTokens: 200000,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0.015, output: 0.075, cacheRead: 0.0015, cacheWrite: 0.01875 },
+    contextWindow: 200000,
+  },
+  "anthropic/claude-sonnet-4.6": {
     name: "Claude Sonnet 4.6",
     maxTokens: 200000,
     reasoning: true,
@@ -44,8 +51,15 @@ export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> = [
     cost: { input: 0.003, output: 0.015, cacheRead: 0.0003, cacheWrite: 0.00375 },
     contextWindow: 200000,
   },
-  {
-    id: "x-ai/grok-4.20-beta",
+  "anthropic/claude-sonnet-4.5": {
+    name: "Claude Sonnet 4.5",
+    maxTokens: 200000,
+    reasoning: true,
+    input: ["text", "image"],
+    cost: { input: 0.003, output: 0.015, cacheRead: 0.0003, cacheWrite: 0.00375 },
+    contextWindow: 200000,
+  },
+  "x-ai/grok-4.20-beta": {
     name: "Grok 4.20 Beta",
     maxTokens: 131072,
     reasoning: true,
@@ -53,8 +67,23 @@ export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> = [
     cost: { input: 0.003, output: 0.015, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 131072,
   },
-  {
-    id: "minimax/minimax-m2.5",
+  "x-ai/grok-4.1-fast": {
+    name: "Grok 4.1 Fast",
+    maxTokens: 131072,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
+  "minimax/minimax-m2.7": {
+    name: "MiniMax M2.7",
+    maxTokens: 1000000,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 1000000,
+  },
+  "minimax/minimax-m2.5": {
     name: "MiniMax M2.5",
     maxTokens: 1000000,
     reasoning: false,
@@ -62,8 +91,7 @@ export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> = [
     cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 1000000,
   },
-  {
-    id: "moonshotai/kimi-k2.5",
+  "moonshotai/kimi-k2.5": {
     name: "Kimi K2.5",
     maxTokens: 131072,
     reasoning: true,
@@ -71,8 +99,7 @@ export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> = [
     cost: { input: 0.002, output: 0.008, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 131072,
   },
-  {
-    id: "z-ai/glm-5",
+  "z-ai/glm-5": {
     name: "GLM-5",
     maxTokens: 128000,
     reasoning: false,
@@ -80,7 +107,86 @@ export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> = [
     cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128000,
   },
-];
+  "z-ai/glm-5-turbo": {
+    name: "GLM-5 Turbo",
+    maxTokens: 128000,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 128000,
+  },
+  "qwen/qwen-2.5-7b-instruct": {
+    name: "Qwen 2.5 7B Instruct",
+    maxTokens: 32768,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0.0005, output: 0.002, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
+  "stepfun/step-3.5-flash": {
+    name: "Step 3.5 Flash",
+    maxTokens: 131072,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
+  "xiaomi/mimo-v2-pro": {
+    name: "MiMo V2 Pro",
+    maxTokens: 131072,
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
+};
+
+const DEFAULT_CONTEXT_WINDOW = 131072;
+const ZERO_COST = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+
+export function modelFromId(id: string): Omit<ModelEntry, "provider"> {
+  const known = MODEL_METADATA[id];
+  if (known) return { id, ...known };
+  const raw = id.split("/").pop() ?? id;
+  const name = raw.replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  return {
+    id,
+    name,
+    maxTokens: DEFAULT_CONTEXT_WINDOW,
+    reasoning: false,
+    input: ["text"],
+    cost: ZERO_COST,
+    contextWindow: DEFAULT_CONTEXT_WINDOW,
+  };
+}
+
+/** Static fallback models used when upstream fetch fails. */
+export const DEFAULT_SURF_MODELS: Array<Omit<ModelEntry, "provider">> =
+  Object.keys(MODEL_METADATA).map(modelFromId);
+
+const MODELS_CACHE_TTL_MS = 5 * 60 * 1000;
+let modelsCache: { models: Array<Omit<ModelEntry, "provider">>; fetchedAt: number } | null = null;
+
+export async function fetchUpstreamModels(
+  upstreamUrl: string,
+): Promise<Array<Omit<ModelEntry, "provider">>> {
+  if (modelsCache && Date.now() - modelsCache.fetchedAt < MODELS_CACHE_TTL_MS) {
+    return modelsCache.models;
+  }
+  try {
+    const res = await globalThis.fetch(`${upstreamUrl}/v1/models`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return modelsCache?.models ?? DEFAULT_SURF_MODELS;
+    const data = (await res.json()) as { data?: Array<{ id: string }> };
+    if (!data.data?.length) return modelsCache?.models ?? DEFAULT_SURF_MODELS;
+    const models = data.data.map((m) => modelFromId(m.id));
+    modelsCache = { models, fetchedAt: Date.now() };
+    return models;
+  } catch {
+    return modelsCache?.models ?? DEFAULT_SURF_MODELS;
+  }
+}
 
 export function resolveProviders(config: Record<string, unknown>): {
   providers: ResolvedProviderConfig[];

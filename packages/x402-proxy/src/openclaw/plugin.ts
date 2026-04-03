@@ -33,12 +33,49 @@ export function register(api: OpenClawPluginApi): void {
   const { providers, models: allModels } = resolveProviders(config);
   const defaultProvider = providers[0];
 
+  function buildSurfAuthResult(gatewayPort: number) {
+    return {
+      profiles: [
+        {
+          profileId: "surf:default",
+          credential: {
+            type: "api_key" as const,
+            provider: "surf",
+            key: "x402-proxy-managed",
+          },
+        },
+      ],
+      configPatch: {
+        models: {
+          providers: {
+            surf: {
+              baseUrl: `http://localhost:${gatewayPort}${defaultProvider.baseUrl}`,
+              api: "openai-completions" as const,
+              authHeader: false,
+              models: defaultProvider.models as Array<{
+                id: string;
+                name: string;
+                reasoning: boolean;
+                input: Array<"text" | "image">;
+                cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+                contextWindow: number;
+                maxTokens: number;
+              }>,
+            },
+          },
+        },
+      },
+      defaultModel: defaultProvider.models[0]?.id,
+    };
+  }
+
   const walletAuthMethod: ProviderAuthMethod = {
     id: "wallet-setup",
     label: "x402-proxy wallet setup",
     hint: "Generate or import a crypto wallet for paid inference",
     kind: "custom",
     run: async (ctx) => {
+      const gatewayPort = ctx.config.gateway?.port ?? 18789;
       const existing = resolveWallet();
       if (existing.source !== "none") {
         const addresses = [
@@ -51,7 +88,7 @@ export function register(api: OpenClawPluginApi): void {
           `Wallet already configured (source: ${existing.source}).\n\n${addresses}`,
           "x402-proxy wallet",
         );
-        return { profiles: [] };
+        return buildSurfAuthResult(gatewayPort);
       }
 
       const action = await ctx.prompter.select({
@@ -99,14 +136,7 @@ export function register(api: OpenClawPluginApi): void {
         .join("\n");
       await ctx.prompter.note(msg, "Wallet created");
 
-      return {
-        profiles: [
-          {
-            profileId: "surf:x402-proxy",
-            credential: { type: "api_key", provider: "surf", key: "x402-proxy-managed" },
-          },
-        ],
-      };
+      return buildSurfAuthResult(gatewayPort);
     },
   };
 
@@ -119,14 +149,19 @@ export function register(api: OpenClawPluginApi): void {
       resolveConfigApiKey: () => "x402-proxy-managed",
       catalog: {
         order: "simple",
-        run: async () => ({
-          provider: {
-            baseUrl: provider.baseUrl,
-            api: "openai-completions",
-            authHeader: false,
-            models: provider.models,
-          },
-        }),
+        run: async (ctx) => {
+          const { apiKey } = ctx.resolveProviderApiKey(provider.id);
+          if (!apiKey) return null;
+          return {
+            provider: {
+              baseUrl: provider.baseUrl,
+              api: "openai-completions",
+              authHeader: false,
+              apiKey,
+              models: provider.models,
+            },
+          };
+        },
       },
     });
   }
