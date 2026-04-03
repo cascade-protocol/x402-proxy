@@ -1,8 +1,27 @@
 # x402-proxy
 
-`curl` for [x402](https://www.x402.org/) and [MPP](https://mpp.dev/) paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and [Tempo](https://tempo.xyz/) - zero crypto code on the buyer side. Supports one-time payments (x402, MPP charge) and pay-per-token streaming (MPP sessions).
+[![npm version](https://img.shields.io/npm/v/x402-proxy.svg?style=flat-square)](https://www.npmjs.com/package/x402-proxy)
+[![license](https://img.shields.io/npm/l/x402-proxy.svg?style=flat-square)](LICENSE)
+[![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 
-## Quick Start
+curl for x402 and MPP paid APIs with MCP proxy support. Auto-pays HTTP 402 on Base, Solana, and Tempo.
+
+Zero crypto code on the buyer side. One mnemonic derives both EVM (Base/Tempo) and Solana keypairs - fund any chain and go. Supports one-time payments (x402, MPP charge) and pay-per-token streaming (MPP sessions). Use it as a CLI, an MCP proxy for AI agents, or as a Node.js library.
+
+## Table of Contents
+
+- [Install](#install)
+- [Usage](#usage)
+- [Commands](#commands)
+- [MCP Proxy](#mcp-proxy)
+- [Wallet](#wallet)
+- [Env Vars](#env-vars)
+- [Library Usage](#library-usage)
+- [OpenClaw Plugin](#openclaw-plugin)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Install
 
 ```bash
 npx x402-proxy https://surf.cascade.fyi/api/v1/twitter/user/openclaw
@@ -12,42 +31,7 @@ That's it. The endpoint returns 402, x402-proxy pays and streams the response.
 
 No wallet? It'll walk you through setup automatically. One mnemonic derives both EVM (Base/Tempo) and Solana keypairs. Fund any chain and go.
 
-## MCP Proxy
-
-Let your AI agent consume any paid MCP server.
-
-### Quick setup
-
-```bash
-npx x402-proxy mcp add surf https://surf.cascade.fyi/mcp
-```
-
-Auto-detects installed AI clients (Claude Code, Cursor, VS Code, and 16+ others), shows a config preview, and writes it for you. Runs wallet setup if needed.
-
-### Manual config
-
-Or add to your client config directly:
-
-```json
-{
-  "mcpServers": {
-    "surf": {
-      "command": "npx",
-      "args": ["-y", "x402-proxy", "mcp", "https://surf.cascade.fyi/mcp"]
-    }
-  }
-}
-```
-
-The proxy auto-generates a wallet on first run and uses `~/.config/x402-proxy/wallet.json`. No env vars needed. Your agent never touches crypto.
-
-For OpenClaw:
-
-```bash
-openclaw mcp set surf '{"command":"npx","args":["-y","x402-proxy","mcp","https://surf.cascade.fyi/mcp"]}'
-```
-
-## HTTP Requests
+## Usage
 
 Works like curl. Response body streams to stdout, payment info goes to stderr.
 
@@ -97,6 +81,41 @@ $ npx x402-proxy wallet export-key <target> # bare key/mnemonic to stdout (evm|s
 
 All commands support `--help` for details. Use `-c <dir>` to override the config directory.
 
+## MCP Proxy
+
+Let your AI agent consume any paid MCP server.
+
+### Quick setup
+
+```bash
+npx x402-proxy mcp add surf https://surf.cascade.fyi/mcp
+```
+
+Auto-detects installed AI clients (Claude Code, Cursor, VS Code, and 16+ others), shows a config preview, and writes it for you. Runs wallet setup if needed.
+
+### Manual config
+
+Or add to your client config directly:
+
+```json
+{
+  "mcpServers": {
+    "surf": {
+      "command": "npx",
+      "args": ["-y", "x402-proxy", "mcp", "https://surf.cascade.fyi/mcp"]
+    }
+  }
+}
+```
+
+The proxy auto-generates a wallet on first run and uses `~/.config/x402-proxy/wallet.json`. No env vars needed. Your agent never touches crypto.
+
+For OpenClaw:
+
+```bash
+openclaw mcp set surf '{"command":"npx","args":["-y","x402-proxy","mcp","https://surf.cascade.fyi/mcp"]}'
+```
+
 ## Wallet
 
 A single BIP-39 mnemonic derives both chains:
@@ -143,7 +162,7 @@ See the [library API docs](https://github.com/cascade-protocol/x402-proxy/tree/m
 
 ## OpenClaw Plugin
 
-The OpenClaw plugin now ships as a separate npm package: `x402-proxy-openclaw`.
+The OpenClaw plugin ships as a separate npm package: `x402-proxy-openclaw`.
 
 ```bash
 openclaw plugins install x402-proxy-openclaw
@@ -155,6 +174,10 @@ By default, the plugin registers a built-in `surf` provider at `/x402-proxy/v1` 
 
 For MPP-backed inference, make sure the wallet source includes an EVM key as well as Solana. `npx x402-proxy setup` does this automatically.
 
+## Contributing
+
+PRs welcome. Feel free to [open an issue](https://github.com/cascade-protocol/x402-proxy/issues) for bug reports or feature requests.
+
 ## License
 
-Apache-2.0
+[Apache-2.0](LICENSE) (c) Cascade Protocol

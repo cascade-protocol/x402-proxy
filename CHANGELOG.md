@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.3] - 2026-04-03
+
+### Changed
+
+- README rewritten to Standard Readme spec (badges, ToC, Install/Usage/Contributing sections)
+- SKILL.md updated for consistency (MCP proxy mention, unified flag style)
+- Unified package description across README, SKILL.md, and package.json
+
 ## [0.11.2] - 2026-04-02
 
 ### Fixed
@@ -44,6 +52,7 @@ All notable changes to this project will be documented in this file.
 - Strip `outputSchema` from proxied MCP tool definitions
 - Downgrade @modelcontextprotocol/sdk to 1.27.1 for compatibility
 
+[0.11.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.1...v0.11.2
 [0.11.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.10.12...v0.11.0

@@ -5,7 +5,7 @@ description: Use x402-proxy CLI for consuming and debugging x402 and MPP paid AP
 
 # x402-proxy
 
-`curl` for x402 and MPP paid APIs. Auto-pays HTTP 402 responses with USDC on Base, Solana, and [Tempo](https://tempo.xyz/). Supports one-time payments (x402, MPP charge) and pay-per-token streaming (MPP sessions).
+`curl` for x402 and MPP paid APIs with MCP proxy support. Auto-pays HTTP 402 on Base, Solana, and [Tempo](https://tempo.xyz/). Supports one-time payments (x402, MPP charge) and pay-per-token streaming (MPP sessions).
 
 ## Quick start
 
@@ -22,9 +22,9 @@ First run auto-creates a wallet. No setup needed.
 npx x402-proxy https://api.example.com/resource
 
 # POST with body and headers
-npx x402-proxy --method POST \
-  --header "Content-Type: application/json" \
-  --body '{"query":"example"}' \
+npx x402-proxy -X POST \
+  -H "Content-Type: application/json" \
+  -d '{"query":"example"}' \
   https://api.example.com/search
 
 # Force a specific chain
