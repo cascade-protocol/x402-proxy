@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.5] - 2026-04-07
+
+### Fixed
+
+- Fix race condition in MPP MCP proxy: concurrent tool calls no longer overwrite each other's payment amounts (replaced shared mutable variable with AsyncLocalStorage per-call context)
+
 ## [0.11.4] - 2026-04-03
 
 ### Added
@@ -64,6 +70,7 @@ All notable changes to this project will be documented in this file.
 - Strip `outputSchema` from proxied MCP tool definitions
 - Downgrade @modelcontextprotocol/sdk to 1.27.1 for compatibility
 
+[0.11.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.2...v0.11.3
 [0.11.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.1...v0.11.2
