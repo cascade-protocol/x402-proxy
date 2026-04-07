@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.6] - 2026-04-07
+
+### Fixed
+
+- Fix HTTP 404 on OpenClaw inference proxy: upstream URL was missing `/v1` suffix, causing requests to hit `/api/v1/inference/chat/completions` instead of `/api/v1/inference/v1/chat/completions`
+- Fix `fetchUpstreamModels` URL construction after upstream URL correction
+
+### Added
+
+- 5 missing models in `MODEL_METADATA`: `z-ai/glm-5.1`, `x-ai/grok-4.20-multi-agent-beta`, `x-ai/grok-4.1-fast:online`, `x-ai/grok-4.20-beta:online`, `x-ai/grok-4.20-multi-agent-beta:online`
+- Catalog auto-sync: `fetchUpstreamModels()` now called in catalog `run` to fetch live model list from upstream on gateway restart
+
+### Changed
+
+- Downgrade plugin startup logs from `info` to `debug` to reduce log spam during `oc status`/`oc doctor`
+
 ## [0.11.5] - 2026-04-07
 
 ### Fixed
@@ -70,6 +86,7 @@ All notable changes to this project will be documented in this file.
 - Strip `outputSchema` from proxied MCP tool definitions
 - Downgrade @modelcontextprotocol/sdk to 1.27.1 for compatibility
 
+[0.11.6]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.5...v0.11.6
 [0.11.5]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.4...v0.11.5
 [0.11.4]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.3...v0.11.4
 [0.11.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.11.2...v0.11.3

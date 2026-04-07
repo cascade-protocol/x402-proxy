@@ -1,7 +1,7 @@
 {
   "name": "x402-proxy",
   "private": true,
-  "version": "0.11.5",
+  "version": "0.11.6",
   "description": "curl for x402 and MPP paid APIs with MCP proxy support. Auto-pays HTTP 402 on Base, Solana, and Tempo.",
   "type": "module",
   "sideEffects": false,
