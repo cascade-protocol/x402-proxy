@@ -21,7 +21,7 @@ export type ResolvedProviderConfig = {
 
 export const DEFAULT_SURF_PROVIDER_ID = "surf";
 export const DEFAULT_SURF_BASE_URL = "/x402-proxy/v1";
-export const DEFAULT_SURF_UPSTREAM_URL = "https://surf.cascade.fyi/api/v1/inference";
+export const DEFAULT_SURF_UPSTREAM_URL = "https://surf.cascade.fyi/api/v1/inference/v1";
 export const DEFAULT_PROVIDER_PROTOCOL: PaymentProtocol = "mpp";
 export const DEFAULT_MPP_SESSION_BUDGET = "0.5";
 
@@ -115,6 +115,46 @@ const MODEL_METADATA: Record<string, Omit<ModelEntry, "provider" | "id">> = {
     cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 128000,
   },
+  "z-ai/glm-5.1": {
+    name: "GLM-5.1",
+    maxTokens: 202000,
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0.002, output: 0.006, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 202000,
+  },
+  "x-ai/grok-4.20-multi-agent-beta": {
+    name: "Grok 4.20 Multi-Agent Beta",
+    maxTokens: 131072,
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0.003, output: 0.015, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
+  "x-ai/grok-4.1-fast:online": {
+    name: "Grok 4.1 Fast (Online)",
+    maxTokens: 131072,
+    reasoning: false,
+    input: ["text"],
+    cost: { input: 0.001, output: 0.005, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
+  "x-ai/grok-4.20-beta:online": {
+    name: "Grok 4.20 Beta (Online)",
+    maxTokens: 131072,
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0.004, output: 0.015, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
+  "x-ai/grok-4.20-multi-agent-beta:online": {
+    name: "Grok 4.20 Multi-Agent Beta (Online)",
+    maxTokens: 131072,
+    reasoning: true,
+    input: ["text"],
+    cost: { input: 0.004, output: 0.015, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: 131072,
+  },
   "qwen/qwen-2.5-7b-instruct": {
     name: "Qwen 2.5 7B Instruct",
     maxTokens: 32768,
@@ -174,7 +214,7 @@ export async function fetchUpstreamModels(
     return modelsCache.models;
   }
   try {
-    const res = await globalThis.fetch(`${upstreamUrl}/v1/models`, {
+    const res = await globalThis.fetch(`${upstreamUrl}/models`, {
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) return modelsCache?.models ?? DEFAULT_SURF_MODELS;

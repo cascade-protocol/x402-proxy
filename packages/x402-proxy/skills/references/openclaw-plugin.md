@@ -41,7 +41,7 @@ If you do nothing, the plugin now defaults to:
 
 - provider id: `surf`
 - gateway base URL: `/x402-proxy/v1`
-- upstream: `https://surf.cascade.fyi/api/v1/inference`
+- upstream: `https://surf.cascade.fyi/api/v1/inference/v1`
 - protocol: `mpp`
 
 You only need explicit config if you want to override the defaults or supply a custom model catalog.
@@ -57,23 +57,27 @@ Add the plugin config to your `openclaw.json` (or via `openclaw config edit`):
           "providers": {
             "surf-inference": {
               "baseUrl": "/x402-proxy/v1",
-              "upstreamUrl": "https://surf.cascade.fyi/api/v1/inference",
+              "upstreamUrl": "https://surf.cascade.fyi/api/v1/inference/v1",
               "models": [
                 { "id": "anthropic/claude-opus-4.6", "name": "Claude Opus 4.6", "maxTokens": 200000, "reasoning": true, "input": ["text", "image"], "cost": { "input": 0.015, "output": 0.075, "cacheRead": 0.0015, "cacheWrite": 0.01875 }, "contextWindow": 200000 },
-                { "id": "anthropic/claude-sonnet-4.6", "name": "Claude Sonnet 4.6", "maxTokens": 200000, "reasoning": true, "input": ["text", "image"], "cost": { "input": 0.003, "output": 0.015, "cacheRead": 0.0003, "cacheWrite": 0.00375 }, "contextWindow": 200000 },
                 { "id": "anthropic/claude-opus-4.5", "name": "Claude Opus 4.5", "maxTokens": 200000, "reasoning": true, "input": ["text", "image"], "cost": { "input": 0.015, "output": 0.075, "cacheRead": 0.0015, "cacheWrite": 0.01875 }, "contextWindow": 200000 },
+                { "id": "anthropic/claude-sonnet-4.6", "name": "Claude Sonnet 4.6", "maxTokens": 200000, "reasoning": true, "input": ["text", "image"], "cost": { "input": 0.003, "output": 0.015, "cacheRead": 0.0003, "cacheWrite": 0.00375 }, "contextWindow": 200000 },
                 { "id": "anthropic/claude-sonnet-4.5", "name": "Claude Sonnet 4.5", "maxTokens": 200000, "reasoning": true, "input": ["text", "image"], "cost": { "input": 0.003, "output": 0.015, "cacheRead": 0.0003, "cacheWrite": 0.00375 }, "contextWindow": 200000 },
                 { "id": "x-ai/grok-4.20-beta", "name": "Grok 4.20 Beta", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.003, "output": 0.015, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
                 { "id": "x-ai/grok-4.20-multi-agent-beta", "name": "Grok 4.20 Multi-Agent", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.003, "output": 0.015, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
                 { "id": "x-ai/grok-4.1-fast", "name": "Grok 4.1 Fast", "maxTokens": 131072, "reasoning": false, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
-                { "id": "x-ai/grok-4.20-beta:online", "name": "Grok 4.20 Beta (Online)", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.005, "output": 0.025, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
-                { "id": "x-ai/grok-4.20-multi-agent-beta:online", "name": "Grok 4.20 Multi-Agent (Online)", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.005, "output": 0.025, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
-                { "id": "x-ai/grok-4.1-fast:online", "name": "Grok 4.1 Fast (Online)", "maxTokens": 131072, "reasoning": false, "input": ["text"], "cost": { "input": 0.003, "output": 0.015, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
+                { "id": "x-ai/grok-4.20-beta:online", "name": "Grok 4.20 Beta (Online)", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.004, "output": 0.015, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
+                { "id": "x-ai/grok-4.20-multi-agent-beta:online", "name": "Grok 4.20 Multi-Agent (Online)", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.004, "output": 0.015, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
+                { "id": "x-ai/grok-4.1-fast:online", "name": "Grok 4.1 Fast (Online)", "maxTokens": 131072, "reasoning": false, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
                 { "id": "minimax/minimax-m2.7", "name": "MiniMax M2.7", "maxTokens": 1000000, "reasoning": false, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 1000000 },
                 { "id": "minimax/minimax-m2.5", "name": "MiniMax M2.5", "maxTokens": 1000000, "reasoning": false, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 1000000 },
                 { "id": "moonshotai/kimi-k2.5", "name": "Kimi K2.5", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.002, "output": 0.008, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
                 { "id": "z-ai/glm-5", "name": "GLM-5", "maxTokens": 128000, "reasoning": false, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 128000 },
-                { "id": "qwen/qwen-2.5-7b-instruct", "name": "Qwen 2.5 7B Instruct", "maxTokens": 32768, "reasoning": false, "input": ["text"], "cost": { "input": 0.0003, "output": 0.001, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 32768 }
+                { "id": "z-ai/glm-5-turbo", "name": "GLM-5 Turbo", "maxTokens": 128000, "reasoning": false, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 128000 },
+                { "id": "z-ai/glm-5.1", "name": "GLM-5.1", "maxTokens": 202000, "reasoning": true, "input": ["text"], "cost": { "input": 0.002, "output": 0.006, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 202000 },
+                { "id": "qwen/qwen-2.5-7b-instruct", "name": "Qwen 2.5 7B Instruct", "maxTokens": 32768, "reasoning": false, "input": ["text"], "cost": { "input": 0.0005, "output": 0.002, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
+                { "id": "stepfun/step-3.5-flash", "name": "Step 3.5 Flash", "maxTokens": 131072, "reasoning": false, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 },
+                { "id": "xiaomi/mimo-v2-pro", "name": "MiMo V2 Pro", "maxTokens": 131072, "reasoning": true, "input": ["text"], "cost": { "input": 0.001, "output": 0.005, "cacheRead": 0, "cacheWrite": 0 }, "contextWindow": 131072 }
               ]
             }
           }
@@ -135,10 +139,17 @@ npx x402-proxy --protocol mpp --network solana \
   https://surf.cascade.fyi/api/v1/inference/v1/models
 ```
 
+Or use the catalog auto-sync: the plugin now fetches the live model list from the upstream on each gateway restart. Just restart OpenClaw:
+
+```bash
+openclaw gateway restart
+```
+
 Then update the `models` array in your plugin config accordingly.
 
 ## Troubleshooting
 
+- **HTTP 404 on inference** - check your `upstreamUrl` ends with `/v1` (e.g., `https://surf.cascade.fyi/api/v1/inference/v1`). OpenClaw appends `/chat/completions` directly to the baseUrl, so the `/v1` must be in the upstream path.
 - **Models don't appear in `openclaw models`** - the plugin uses a `catalog` hook (not `models` field). Make sure you're on x402-proxy >= 0.8.5.
 - **"no wallet found" in logs** - run `npx x402-proxy setup` or set `X402_PROXY_WALLET_MNEMONIC` env var before starting the gateway.
 - **402 errors on inference** - check wallet has USDC balance: use `x_wallet` tool or `npx x402-proxy wallet`.

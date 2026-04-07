@@ -19,7 +19,7 @@ import { OptimizedSvmScheme } from "../lib/optimized-svm-scheme.js";
 import { resolveWallet } from "../lib/wallet-resolution.js";
 import { loadSvmWallet } from "../wallet.js";
 import { createSendCommand, createWalletCommand } from "./commands.js";
-import { resolveProviders, routePrefixForBaseUrl } from "./defaults.js";
+import { fetchUpstreamModels, resolveProviders, routePrefixForBaseUrl } from "./defaults.js";
 import { createInferenceProxyRouteHandler } from "./route.js";
 import { addressForNetwork, createRequestTool, createWalletTool, SOL_MAINNET } from "./tools.js";
 
@@ -152,13 +152,16 @@ export function register(api: OpenClawPluginApi): void {
         run: async (ctx) => {
           const { apiKey } = ctx.resolveProviderApiKey(provider.id);
           if (!apiKey) return null;
+          const models = await fetchUpstreamModels(provider.upstreamUrl).catch(
+            () => provider.models,
+          );
           return {
             provider: {
               baseUrl: provider.baseUrl,
               api: "openai-completions",
               authHeader: false,
               apiKey,
-              models: provider.models,
+              models,
             },
           };
         },
@@ -166,7 +169,7 @@ export function register(api: OpenClawPluginApi): void {
     });
   }
 
-  api.logger.info(
+  api.logger.debug?.(
     `x402-proxy: ${providers.map((provider) => `${provider.id}:${provider.protocol}`).join(", ")} - ${allModels.length} models`,
   );
 
@@ -202,7 +205,7 @@ export function register(api: OpenClawPluginApi): void {
       handler,
     });
   }
-  api.logger.info(
+  api.logger.debug?.(
     `x402-proxy: HTTP routes ${routePrefixes.join(", ")} registered for ${providers.map((provider) => provider.upstreamUrl).join(", ")}`,
   );
 
@@ -276,7 +279,7 @@ export function register(api: OpenClawPluginApi): void {
           mppHandlerRef = null;
         }
 
-        api.logger.info(
+        api.logger.debug?.(
           `wallets: solana=${solanaWalletAddress ?? "missing"} evm=${evmWalletAddress ?? "missing"}`,
         );
       } catch (err) {
