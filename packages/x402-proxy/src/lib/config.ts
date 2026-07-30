@@ -10,6 +10,10 @@ export type ProxyConfig = {
   mppSessionBudget?: string;
   spendLimitDaily?: number;
   spendLimitPerTx?: number;
+  /** Only pay these payTo addresses (empty/absent = no allow-list). */
+  allowPayTo?: string[];
+  /** Never pay these payTo addresses. Wins over allowPayTo. */
+  denyPayTo?: string[];
 };
 
 export type WalletFile = {

@@ -302,6 +302,8 @@ Wallet is auto-generated on first run. No env vars needed.`,
         preferredNetwork,
         network: flags.network,
         spendLimitDaily: config?.spendLimitDaily,
+        allowPayTo: config?.allowPayTo,
+        denyPayTo: config?.denyPayTo,
         spendLimitPerTx: config?.spendLimitPerTx,
       });
 
