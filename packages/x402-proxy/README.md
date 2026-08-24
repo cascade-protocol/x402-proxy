@@ -59,7 +59,15 @@ $ npx x402-proxy --protocol mpp \
 
 # Pipe-safe
 $ npx x402-proxy https://api.example.com/data | jq '.results'
+
+# Real x402 service (pays per call in USDC on Base): live crypto market data
+$ npx x402-proxy https://web3id.xyz/crypto/top
+$ npx x402-proxy "https://web3id.xyz/crypto/price?ids=bitcoin,ethereum"
+$ npx x402-proxy https://web3id.xyz/crypto/fear-greed
+# Free tier (no payment): try before you pay
+$ curl -s https://web3id.xyz/crypto/price?ids=bitcoin
 ```
+See [web3id.xyz](https://web3id.xyz) for the full endpoint catalog (359 market-intelligence endpoints).
 
 ## Commands
 
