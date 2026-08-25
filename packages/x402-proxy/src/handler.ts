@@ -6,6 +6,7 @@ import { parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { clearSession, saveSession } from "./lib/config.js";
 import { getMppVoucherHeadroomUsdc, isDebugEnabled } from "./lib/env.js";
+import { checkSeller } from "./lib/trust-guard.js";
 
 export type PaymentInfo = {
   protocol: "x402";
@@ -32,8 +33,19 @@ export type MppPaymentInfo = {
   };
 };
 
+/** Opt-in pre-payment trust check. Off unless `enabled`. Always fail-soft. */
+export type GuardConfig = {
+  enabled: boolean;
+  /** Also abort on merona UNCERTAIN, not just FAIL. */
+  strict?: boolean;
+  /** Override the trust endpoint (defaults to merona's free API). */
+  endpoint?: string;
+};
+
 export type X402ProxyOptions = {
   client: x402Client;
+  /** Optional pre-payment guard. When omitted or disabled, behavior is unchanged. */
+  guard?: GuardConfig;
 };
 
 export type X402ProxyHandler = {
@@ -108,9 +120,29 @@ export function extractTxSignature(response: Response): string | undefined {
  * Create an x402 proxy handler that wraps fetch with automatic payment.
  */
 export function createX402ProxyHandler(opts: X402ProxyOptions): X402ProxyHandler {
-  const { client } = opts;
+  const { client, guard } = opts;
 
   const paymentQueue: PaymentInfo[] = [];
+
+  // Opt-in, off by default: check the seller wallet BEFORE the payment is signed.
+  // onBeforePaymentCreation can return { abort: true } to cancel; the guard is
+  // fail-soft, so an unreachable/uncovered check never aborts.
+  if (guard?.enabled) {
+    client.onBeforePaymentCreation(async (ctx) => {
+      const { payTo, network } = ctx.selectedRequirements;
+      const { verdict, reason } = await checkSeller(payTo, network, {
+        strict: guard.strict,
+        endpoint: guard.endpoint,
+      });
+      if (verdict === "deny" || (guard.strict && verdict === "review")) {
+        process.stderr.write(
+          `  [guard] merona ${verdict} for ${payTo ?? "?"} on ${network ?? "?"}: ${reason} — payment aborted\n`,
+        );
+        return { abort: true, reason: `merona ${verdict}: ${reason}` };
+      }
+      return;
+    });
+  }
 
   client.onAfterPaymentCreation(async (hookCtx) => {
     const raw = hookCtx.selectedRequirements.amount;

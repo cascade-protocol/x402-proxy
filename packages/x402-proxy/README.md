@@ -12,6 +12,7 @@ Zero crypto code on the buyer side. One mnemonic derives both EVM (Base/Monad/Te
 
 - [Install](#install)
 - [Usage](#usage)
+- [Optional: pre-payment guard](#optional-pre-payment-guard)
 - [Commands](#commands)
 - [MCP Proxy](#mcp-proxy)
 - [Wallet](#wallet)
@@ -60,6 +61,31 @@ $ npx x402-proxy --protocol mpp \
 # Pipe-safe
 $ npx x402-proxy https://api.example.com/data | jq '.results'
 ```
+
+## Optional: pre-payment guard
+
+By default x402-proxy pays a 402 as soon as it sees one. With `--guard` (opt-in,
+off by default) it first checks the **seller wallet** and skips the payment if
+the seller has a recorded problem — a counterparty check, complementing the
+amount you already control.
+
+```bash
+# default — auto-pays, no check
+$ npx x402-proxy https://surf.cascade.fyi/api/v1/twitter/user/openclaw
+
+# opt-in: check the seller before paying
+$ npx x402-proxy --guard https://surf.cascade.fyi/api/v1/twitter/user/openclaw
+
+# strict: also skip when the check is UNCERTAIN
+$ npx x402-proxy --guard --guard-strict https://surf.cascade.fyi/api/v1/twitter/user/openclaw
+```
+
+The check calls [merona](https://merona.io)'s free trust API (an independent
+x402 settlement index; no key, no signup) and aborts the payment only on a
+recorded **FAIL** (or, with `--guard-strict`, an **UNCERTAIN**). It is
+**fail-soft**: if the check is unreachable, slow, or has no coverage for the
+network, the payment proceeds — the guard never bricks a request. No dependency
+is added; it is a single `fetch`. merona covers Base, Polygon, and Solana today.
 
 ## Commands
 
