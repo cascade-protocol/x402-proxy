@@ -35,6 +35,8 @@ type FetchFlags = {
   protocol: string | undefined;
   json: boolean;
   verbose: boolean;
+  guard: boolean;
+  guardStrict: boolean;
 };
 
 export const fetchCommand = buildCommand<FetchFlags, [url?: string], CommandContext>({
@@ -100,6 +102,16 @@ Examples:
       verbose: {
         kind: "boolean",
         brief: "Show debug details (protocol negotiation, headers, payment flow)",
+        default: false,
+      },
+      guard: {
+        kind: "boolean",
+        brief: "Check the seller wallet with merona before paying (opt-in, fail-soft)",
+        default: false,
+      },
+      guardStrict: {
+        kind: "boolean",
+        brief: "With --guard, also skip payment when the check is UNCERTAIN",
         default: false,
       },
     },
@@ -375,7 +387,10 @@ Examples:
           spendLimitDaily: config?.spendLimitDaily,
           spendLimitPerTx: config?.spendLimitPerTx,
         });
-        const handler = createX402ProxyHandler({ client });
+        const handler = createX402ProxyHandler({
+          client,
+          guard: { enabled: flags.guard, strict: flags.guardStrict },
+        });
         response = await handler.x402Fetch(parsedUrl.toString(), init);
         x402Payment = handler.shiftPayment();
         usedProtocol = "x402";
@@ -387,7 +402,10 @@ Examples:
           spendLimitDaily: config?.spendLimitDaily,
           spendLimitPerTx: config?.spendLimitPerTx,
         });
-        const handler = createX402ProxyHandler({ client });
+        const handler = createX402ProxyHandler({
+          client,
+          guard: { enabled: flags.guard, strict: flags.guardStrict },
+        });
         response = await handler.x402Fetch(parsedUrl.toString(), init);
         x402Payment = handler.shiftPayment();
         usedProtocol = "x402";
