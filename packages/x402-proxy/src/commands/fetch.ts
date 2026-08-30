@@ -373,6 +373,8 @@ Examples:
           preferredNetwork,
           network: flags.network,
           spendLimitDaily: config?.spendLimitDaily,
+          allowPayTo: config?.allowPayTo,
+          denyPayTo: config?.denyPayTo,
           spendLimitPerTx: config?.spendLimitPerTx,
         });
         const handler = createX402ProxyHandler({ client });

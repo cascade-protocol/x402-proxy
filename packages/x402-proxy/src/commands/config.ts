@@ -41,6 +41,14 @@ const VALID_KEYS: Record<
       return n;
     },
   },
+  allowPayTo: {
+    description: "Comma-separated payTo addresses this wallet may pay (empty = any)",
+    parse: (v) => parseAddressList(v),
+  },
+  denyPayTo: {
+    description: "Comma-separated payTo addresses this wallet must never pay",
+    parse: (v) => parseAddressList(v),
+  },
   spendLimitPerTx: {
     description: "Per-transaction spending limit in USDC",
     parse: (v) => {
@@ -50,6 +58,23 @@ const VALID_KEYS: Record<
     },
   },
 };
+
+/**
+ * Parse a comma-separated counterparty list. Empty string clears the list,
+ * which is how an operator removes a restriction without editing YAML.
+ */
+function parseAddressList(v: string): string[] {
+  const items = v
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  for (const a of items) {
+    if (!(a.startsWith("0x") ? /^0x[0-9a-fA-F]{40}$/ : /^[1-9A-HJ-NP-Za-km-z]{32,44}$/).test(a)) {
+      throw new Error(`Not a valid EVM or Solana address: ${a}`);
+    }
+  }
+  return items;
+}
 
 function isConfigKey(k: string): k is keyof ProxyConfig {
   return k in VALID_KEYS;

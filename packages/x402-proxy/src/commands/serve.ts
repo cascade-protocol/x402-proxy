@@ -131,6 +131,8 @@ export async function startServeServer(
     preferredNetwork: preferredNetwork || undefined,
     network: options.network,
     spendLimitDaily: config?.spendLimitDaily,
+    allowPayTo: config?.allowPayTo,
+    denyPayTo: config?.denyPayTo,
     spendLimitPerTx: config?.spendLimitPerTx,
   });
   const x402Proxy = createX402ProxyHandler({ client: x402Client });

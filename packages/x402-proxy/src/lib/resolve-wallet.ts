@@ -78,7 +78,63 @@ export type BuildClientOptions = {
   network?: string;
   spendLimitDaily?: number;
   spendLimitPerTx?: number;
+  /** Counterparty allow/deny by payTo address (deny wins on conflict). */
+  allowPayTo?: string[];
+  denyPayTo?: string[];
 };
+
+/**
+ * Refuse (or restrict) payment by COUNTERPARTY.
+ *
+ * Spend limits answer "how much may I pay"; this answers "whom may I pay at
+ * all". Both are pre-sign: a policy that throws stops the client before the
+ * payment payload is built, so nothing is signed and no funds move.
+ *
+ * `deny` wins over `allow` when an address appears in both, because a denial is
+ * the safer interpretation of contradictory config.
+ *
+ * Matching is exact and case-sensitive for Solana (base58 is case-significant)
+ * and case-insensitive for EVM `0x` addresses (hex checksumming varies).
+ */
+export function createCounterpartyPolicy(opts: {
+  allow?: string[];
+  deny?: string[];
+}): PaymentPolicy {
+  const norm = (a: string) => (a.startsWith("0x") ? a.toLowerCase() : a);
+  const deny = new Set((opts.deny ?? []).map(norm));
+  const allow = new Set((opts.allow ?? []).map(norm));
+
+  return (_version, reqs) => {
+    const before = reqs.length;
+    const refused: string[] = [];
+
+    let kept = reqs.filter((r) => {
+      if (deny.has(norm(r.payTo))) {
+        refused.push(`${r.payTo} (denied)`);
+        return false;
+      }
+      return true;
+    });
+
+    if (allow.size > 0) {
+      kept = kept.filter((r) => {
+        if (!allow.has(norm(r.payTo))) {
+          refused.push(`${r.payTo} (not in allow list)`);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    if (kept.length === 0 && before > 0) {
+      throw new Error(
+        `No acceptable counterparty. Refused:\n  ${refused.join("\n  ")}\n` +
+          `Update allowPayTo / denyPayTo with: x402-proxy config set`,
+      );
+    }
+    return kept;
+  };
+}
 
 /**
  * Build a configured x402Client from resolved wallet keys.
@@ -111,6 +167,13 @@ export async function buildX402Client(
 
   if (opts?.network) {
     client.registerPolicy(createNetworkFilter(opts.network));
+  }
+
+  // Counterparty policy: refuse WHO, independent of HOW MUCH.
+  if (opts?.allowPayTo?.length || opts?.denyPayTo?.length) {
+    client.registerPolicy(
+      createCounterpartyPolicy({ allow: opts.allowPayTo, deny: opts.denyPayTo }),
+    );
   }
 
   // Spend limit policies
