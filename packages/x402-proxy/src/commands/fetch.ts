@@ -284,6 +284,9 @@ Examples:
         const mppHandler = await createMppProxyHandler({
           evmKey: wallet.evmKey,
           maxDeposit,
+          historyPath: getHistoryPath(),
+          spendLimitDaily: config?.spendLimitDaily,
+          spendLimitPerTx: config?.spendLimitPerTx,
         });
 
         // Detect SSE streaming requests - these need session.sse() for mid-stream voucher cycling
@@ -401,6 +404,9 @@ Examples:
             const mppHandler = await createMppProxyHandler({
               evmKey: wallet.evmKey,
               maxDeposit,
+              historyPath: getHistoryPath(),
+              spendLimitDaily: config?.spendLimitDaily,
+              spendLimitPerTx: config?.spendLimitPerTx,
             });
             try {
               response = await mppHandler.fetch(parsedUrl.toString(), init);

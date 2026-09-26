@@ -6,6 +6,7 @@ import { parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { clearSession, saveSession } from "./lib/config.js";
 import { getMppVoucherHeadroomUsdc, isDebugEnabled } from "./lib/env.js";
+import { assertSpendAllowed } from "./lib/spend-limit.js";
 
 export type PaymentInfo = {
   protocol: "x402";
@@ -181,6 +182,9 @@ export function splitSseFrames(buffer: string): { frames: string[]; rest: string
 export async function createMppProxyHandler(opts: {
   evmKey: string;
   maxDeposit?: string;
+  historyPath?: string;
+  spendLimitDaily?: number;
+  spendLimitPerTx?: number;
 }): Promise<MppProxyHandler> {
   const account = privateKeyToAccount(opts.evmKey as `0x${string}`);
   const maxDeposit = opts.maxDeposit ?? "1";
@@ -196,7 +200,15 @@ export async function createMppProxyHandler(opts: {
     onChallenge: async (challenge) => {
       const req = challenge.request as { amount?: string; decimals?: number };
       if (req.amount) {
-        lastChallengeAmount = (Number(req.amount) / 10 ** (req.decimals ?? 6)).toString();
+        const amount = Number(req.amount) / 10 ** (req.decimals ?? 6);
+        if (opts.historyPath) {
+          assertSpendAllowed(amount, {
+            historyPath: opts.historyPath,
+            spendLimitDaily: opts.spendLimitDaily,
+            spendLimitPerTx: opts.spendLimitPerTx,
+          });
+        }
+        lastChallengeAmount = amount.toString();
       }
       return undefined;
     },

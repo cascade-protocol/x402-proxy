@@ -7,6 +7,7 @@ import { appendHistory, displayNetwork, formatAmount, type TxRecord } from "../h
 import { getHistoryPath, loadConfig } from "../lib/config.js";
 import { dim, error, warn } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
+import { assertSpendAllowed } from "../lib/spend-limit.js";
 
 type McpFlags = {
   evmKey: string | undefined;
@@ -467,6 +468,11 @@ Wallet is auto-generated on first run. No env vars needed.`,
           const store = challengeAmountStore.getStore();
           if (req.amount && store) {
             store.amount = Number(req.amount) / 10 ** (req.decimals ?? 6);
+            assertSpendAllowed(store.amount, {
+              historyPath: getHistoryPath(),
+              spendLimitDaily: config?.spendLimitDaily,
+              spendLimitPerTx: config?.spendLimitPerTx,
+            });
           }
           return (m.createCredential as (p: unknown) => Promise<string>)(params);
         },

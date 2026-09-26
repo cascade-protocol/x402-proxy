@@ -135,7 +135,13 @@ export async function startServeServer(
   });
   const x402Proxy = createX402ProxyHandler({ client: x402Client });
   const mppHandler = wallet.evmKey
-    ? await createMppProxyHandler({ evmKey: wallet.evmKey, maxDeposit: configuredMppBudget })
+    ? await createMppProxyHandler({
+        evmKey: wallet.evmKey,
+        maxDeposit: configuredMppBudget,
+        historyPath: getHistoryPath(),
+        spendLimitDaily: config?.spendLimitDaily,
+        spendLimitPerTx: config?.spendLimitPerTx,
+      })
     : null;
   const { providers, models } = resolveProviders({
     protocol: resolvedProtocol,
