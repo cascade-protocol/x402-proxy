@@ -1,7 +1,9 @@
 import { base58 } from "@scure/base";
+import { generateKeyPairSigner } from "@solana/kit";
 import type { PaymentRequirements } from "@x402/fetch";
 import { describe, expect, it } from "vitest";
 import { deriveSolanaKeypair } from "./derive.js";
+import { OptimizedSvmScheme } from "./optimized-svm-scheme.js";
 import {
   createAddressValidationPolicy,
   createNetworkFilter,
@@ -33,6 +35,29 @@ const solanaReq = makeReq({ network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }
 const tempoReq = makeReq({ network: "eip155:4217" });
 const bothReqs = [baseReq, solanaReq];
 const allReqs = [baseReq, solanaReq, tempoReq];
+
+describe("OptimizedSvmScheme", () => {
+  it.each([
+    { versions: [] },
+    { versions: [1] },
+  ])("refuses incompatible transaction versions before preparing payment (%j)", async ({
+    versions,
+  }) => {
+    const signer = await generateKeyPairSigner();
+    const scheme = new OptimizedSvmScheme(signer);
+    await expect(
+      scheme.createPaymentPayload(
+        2,
+        makeReq({
+          ...solanaReq,
+          asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+          payTo: signer.address,
+          extra: { transactionVersions: versions },
+        }),
+      ),
+    ).rejects.toThrow("unsupported_transaction_version");
+  });
+});
 
 // --- networkToCaipPrefix ---
 

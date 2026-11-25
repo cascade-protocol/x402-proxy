@@ -23,6 +23,8 @@ import {
 } from "@solana-program/token";
 import type { PaymentRequirements, SchemeNetworkClient } from "@x402/core/types";
 
+import { resolveTransactionVersion } from "@x402/svm";
+
 const MEMO_PROGRAM_ADDRESS: Address = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" as Address;
 const COMPUTE_BUDGET_PROGRAM: Address = "ComputeBudget111111111111111111111111111111" as Address;
 const COMPUTE_UNIT_LIMIT = 20_000;
@@ -110,6 +112,8 @@ export class OptimizedSvmScheme implements SchemeNetworkClient {
   }
 
   async createPaymentPayload(x402Version: number, paymentRequirements: PaymentRequirements) {
+    // The optimized builder uses v0 ComputeBudget instructions.
+    resolveTransactionVersion(paymentRequirements.extra, [0]);
     const rpc = this.rpc;
     const asset = paymentRequirements.asset as Address;
 
