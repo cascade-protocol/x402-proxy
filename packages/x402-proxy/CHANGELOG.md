@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-25
+
 ### Fixed
 
 - `wallet` and `status` now show the Tempo USDC balance.
@@ -546,7 +548,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.0...v0.12.1
