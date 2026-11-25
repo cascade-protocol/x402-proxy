@@ -6,11 +6,12 @@ import {
   createTransactionMessage,
   getBase64EncodedWireTransaction,
   isSolanaError,
+  type MainnetUrl,
   mainnet,
   partiallySignTransactionMessageWithSigners,
   pipe,
-  prependTransactionMessageInstruction,
   SOLANA_ERROR__RPC__TRANSPORT_HTTP_ERROR,
+  setTransactionMessageComputeUnitLimit,
   setTransactionMessageComputeUnitPrice,
   setTransactionMessageFeePayer,
   setTransactionMessageLifetimeUsingBlockhash,
@@ -21,22 +22,14 @@ import {
   getTransferCheckedInstruction,
   TOKEN_PROGRAM_ADDRESS,
 } from "@solana-program/token";
+import type { SpendControls } from "@x402/core/client";
 import type { PaymentRequirements, SchemeNetworkClient } from "@x402/core/types";
 
-const MEMO_PROGRAM_ADDRESS: Address = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" as Address;
-const COMPUTE_BUDGET_PROGRAM: Address = "ComputeBudget111111111111111111111111111111" as Address;
-const COMPUTE_UNIT_LIMIT = 20_000;
-const COMPUTE_UNIT_PRICE_MICROLAMPORTS = 1n;
+export const proxySpendControls = {
+  maxAmountPerPayment: false,
+  allowedAssets: [{ network: "solana:*", asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" }],
+} satisfies SpendControls;
 
-/** Build a SetComputeUnitLimit instruction (discriminator 0x02 + u32 LE). */
-function getSetComputeUnitLimitInstruction(units: number) {
-  const data = new Uint8Array(5);
-  data[0] = 0x02;
-  new DataView(data.buffer).setUint32(1, units, true);
-  return { programAddress: COMPUTE_BUDGET_PROGRAM, accounts: [] as const, data };
-}
-
-const USDC_MINT: Address = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" as Address;
 const USDC_DECIMALS = 6;
 
 // Public no-auth Solana mainnet RPCs used as failover chain.
@@ -54,15 +47,14 @@ const MAINNET_RPC_URLS = [
   "https://public.rpc.solanavibestation.com",
 ];
 
-type Transport = ReturnType<typeof createDefaultRpcTransport>;
-
 /**
  * Create a failover transport that tries each RPC in order.
  * On 429 from one endpoint, immediately tries the next instead of waiting.
  * Each transport gets its own coalescing via createDefaultRpcTransport.
  */
-function createFailoverTransport(urls: string[]) {
+function createFailoverTransport(urls: MainnetUrl[]) {
   const transports = urls.map((url) => createDefaultRpcTransport({ url }));
+  type Transport = (typeof transports)[number];
   const failover: Transport = (async (config) => {
     let lastError: unknown;
     for (const transport of transports) {
@@ -89,15 +81,7 @@ function createRpcClient(customRpcUrl?: string) {
   return createSolanaRpcFromTransport(createFailoverTransport(urls.map((u) => mainnet(u))));
 }
 
-/**
- * Optimized ExactSvmScheme that replaces upstream @x402/svm to prevent
- * RPC rate-limit failures on parallel payments.
- *
- * Two optimizations over upstream:
- * 1. Shared RPC client - @solana/kit's built-in request coalescing
- *    merges identical getLatestBlockhash calls in the same tick into 1.
- * 2. Hardcoded USDC - skips fetchMint RPC call for USDC (immutable data).
- */
+/** Shares a coalescing failover RPC and builds transfers from known mainnet USDC metadata. */
 export class OptimizedSvmScheme implements SchemeNetworkClient {
   readonly scheme = "exact";
   private readonly rpc: ReturnType<typeof createRpcClient>;
@@ -110,10 +94,21 @@ export class OptimizedSvmScheme implements SchemeNetworkClient {
   }
 
   async createPaymentPayload(x402Version: number, paymentRequirements: PaymentRequirements) {
+    const {
+      resolveBlockhash,
+      resolveTransactionVersion,
+      DEFAULT_COMPUTE_UNIT_LIMIT,
+      DEFAULT_COMPUTE_UNIT_PRICE_MICROLAMPORTS,
+      MAX_MEMO_BYTES,
+      MEMO_PROGRAM_ADDRESS,
+      USDC_MAINNET_ADDRESS,
+    } = await import("@x402/svm");
+    // The optimized builder uses v0 ComputeBudget instructions.
+    resolveTransactionVersion(paymentRequirements.extra, [0]);
     const rpc = this.rpc;
     const asset = paymentRequirements.asset as Address;
 
-    if (asset !== USDC_MINT) {
+    if (asset !== USDC_MAINNET_ADDRESS) {
       throw new Error(`Unsupported asset: ${asset}. Only USDC is supported.`);
     }
 
@@ -144,28 +139,23 @@ export class OptimizedSvmScheme implements SchemeNetworkClient {
       throw new Error("feePayer is required in paymentRequirements.extra for SVM transactions");
     }
 
-    const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
-
-    const nonce = crypto.getRandomValues(new Uint8Array(16));
-    const memoIx = {
-      programAddress: MEMO_PROGRAM_ADDRESS,
-      accounts: [] as const,
-      data: new TextEncoder().encode(
-        Array.from(nonce)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join(""),
-      ),
-    };
+    const sellerMemo = paymentRequirements.extra?.memo;
+    const memo =
+      typeof sellerMemo === "string" && sellerMemo !== ""
+        ? sellerMemo
+        : Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
+    const data = new TextEncoder().encode(memo);
+    if (data.byteLength > MAX_MEMO_BYTES)
+      throw new Error(`extra.memo exceeds the maximum of ${MAX_MEMO_BYTES} bytes`);
+    const memoIx = { programAddress: MEMO_PROGRAM_ADDRESS as Address, accounts: [] as const, data };
+    const latestBlockhash = await resolveBlockhash(rpc, paymentRequirements);
 
     const tx = pipe(
       createTransactionMessage({ version: 0 }),
-      (tx) => setTransactionMessageComputeUnitPrice(COMPUTE_UNIT_PRICE_MICROLAMPORTS, tx),
-      (tx) => setTransactionMessageFeePayer(feePayer, tx),
+      (tx) => setTransactionMessageComputeUnitLimit(DEFAULT_COMPUTE_UNIT_LIMIT, tx),
       (tx) =>
-        prependTransactionMessageInstruction(
-          getSetComputeUnitLimitInstruction(COMPUTE_UNIT_LIMIT),
-          tx,
-        ),
+        setTransactionMessageComputeUnitPrice(BigInt(DEFAULT_COMPUTE_UNIT_PRICE_MICROLAMPORTS), tx),
+      (tx) => setTransactionMessageFeePayer(feePayer, tx),
       (tx) => appendTransactionMessageInstructions([transferIx, memoIx], tx),
       (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
     );

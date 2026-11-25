@@ -1,10 +1,21 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Challenge, Credential, Mcp } from "mppx";
+import { tempo } from "mppx/client";
+import { McpClient } from "mppx/mcp/client";
 import { describe, expect, it, vi } from "vitest";
+import { appendHistory, readHistory } from "../history.js";
+import { getHistoryPath } from "../lib/config.js";
 import {
+  callMppTool,
   callX402ToolWithAutoPayment,
   cloneResource,
   cloneTool,
+  createMppToolPayment,
   extractPaymentRequiredFromResult,
   normalizeCallToolResult,
+  trustedMcpRealms,
 } from "./mcp.js";
 
 describe("cloneTool", () => {
@@ -162,5 +173,153 @@ describe("callX402ToolWithAutoPayment", () => {
       structuredContent: { query: "x402", results: [], count: 0 },
       _meta: { "x402/payment-response": { transaction: "0xsettled" } },
     });
+  });
+});
+
+describe("MPP tool payment approval", () => {
+  const charge = { intent: "charge", request: { amount: "600000" } };
+
+  it("allows one payment per call and enforces the per-transaction limit", () => {
+    const pending = new Map<symbol, number>();
+    expect(() => createMppToolPayment({ spendLimitPerTx: 0.5 }, pending).approve(charge)).toThrow(
+      "per-transaction",
+    );
+    const call = createMppToolPayment({ spendLimitPerTx: 0.6 }, pending);
+    expect(call.approve(charge)).toBe(true);
+    expect(() => call.approve(charge)).toThrow("one payment");
+    expect(() =>
+      createMppToolPayment({ spendLimitPerTx: 0.6 }, pending).approve({
+        intent: "session",
+        request: { amount: "2", suggestedDeposit: "1000000" },
+      }),
+    ).toThrow("per-transaction");
+  });
+
+  it("counts history and other in-flight approvals toward the daily limit", ({
+    onTestFinished,
+  }) => {
+    const dir = mkdtempSync(join(tmpdir(), "x402-mcp-limit-"));
+    vi.stubEnv("XDG_CONFIG_HOME", dir);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    });
+    appendHistory(getHistoryPath(), {
+      t: Date.now(),
+      ok: true,
+      kind: "mpp_payment",
+      net: "tempo",
+      from: "test",
+      amount: 0.4,
+      token: "USDC",
+    });
+    const pending = new Map<symbol, number>();
+    const approve = () => createMppToolPayment({ spendLimitDaily: 1 }, pending);
+    expect(() => approve().approve({ ...charge, request: { amount: "600001" } })).toThrow(
+      "Daily spend limit",
+    );
+    const first = approve();
+    expect(first.approve(charge)).toBe(true);
+    expect(() => approve().approve(charge)).toThrow("Daily spend limit");
+    first.release();
+    expect(approve().approve(charge)).toBe(true);
+  });
+
+  it("allows a zero-cost proof at the daily cap and still refuses a second approval", () => {
+    const payment = createMppToolPayment({ spendLimitDaily: 0 }, new Map());
+    const proof = { ...charge, request: { amount: "0" } };
+    expect(payment.approve(proof)).toBe(true);
+    expect(() => payment.approve(proof)).toThrow("Only one payment");
+  });
+
+  it("handles repeated challenges and receiptless settlement through the wrapped callTool", async ({
+    onTestFinished,
+  }) => {
+    const dir = mkdtempSync(join(tmpdir(), "x402-mcp-call-"));
+    vi.stubEnv("XDG_CONFIG_HOME", dir);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    });
+    const challenge = Challenge.from({
+      ...charge,
+      id: "test-charge",
+      method: "tempo",
+      realm: "example.test",
+      request: {
+        ...charge.request,
+        currency: "0x20c0000000000000000000000000000000000000",
+        recipient: "0x0000000000000000000000000000000000000001",
+      },
+    });
+    const required = {
+      content: [],
+      _meta: { [Mcp.paymentRequiredMetaKey]: { challenges: [challenge] } },
+    };
+    const success = { content: [{ type: "text", text: "ok" }] };
+    const callTool = vi
+      .fn()
+      .mockResolvedValueOnce(required)
+      .mockResolvedValueOnce(required)
+      .mockResolvedValueOnce(required)
+      .mockResolvedValueOnce(success)
+      .mockResolvedValue(required);
+    const method = tempo.charge();
+    const sign = vi
+      .spyOn(method, "createCredential")
+      .mockImplementation(async ({ challenge }) =>
+        Credential.serialize({ challenge, payload: {} }),
+      );
+    const client = McpClient.wrap(
+      { callTool },
+      { methods: [method], trustedTempoProofRealms: trustedMcpRealms("example.test") },
+    );
+    const pending = new Map<symbol, number>();
+    const call = () =>
+      callMppTool(
+        client,
+        { name: "lookup", arguments: {} },
+        { spendLimitDaily: 0.6 },
+        pending,
+        "test",
+      );
+
+    await expect(call()).rejects.toThrow("Only one payment");
+    expect(sign).toHaveBeenCalledTimes(1);
+    expect(callTool).toHaveBeenCalledTimes(2);
+    expect(callTool.mock.calls[1]?.[0]._meta[Mcp.credentialMetaKey]).toBeDefined();
+    expect(pending.size).toBe(0);
+    expect(readHistory(getHistoryPath())).toEqual([]);
+
+    await expect(call()).resolves.toMatchObject(success);
+    expect(pending.size).toBe(0);
+    const history = readHistory(getHistoryPath());
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({ kind: "mpp_payment", amount: 0.6, label: "mcp:lookup" });
+    expect(history[0]).not.toHaveProperty("tx");
+    await expect(call()).rejects.toThrow("Daily spend limit");
+    expect(sign).toHaveBeenCalledTimes(2);
+    expect(callTool).toHaveBeenCalledTimes(5);
+
+    const proof = { ...challenge, request: { ...challenge.request, amount: "0" } };
+    callTool
+      .mockResolvedValueOnce({
+        content: [],
+        _meta: { [Mcp.paymentRequiredMetaKey]: { challenges: [proof] } },
+      })
+      .mockResolvedValueOnce(success);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    onTestFinished(() => stderr.mockRestore());
+    await expect(call()).resolves.toMatchObject(success);
+    expect(sign).toHaveBeenCalledTimes(3);
+    expect(pending.size).toBe(0);
+    expect.soft(readHistory(getHistoryPath())).toEqual(history);
+    expect(stderr).not.toHaveBeenCalledWith(expect.stringContaining("MPP payment"));
+  });
+
+  it("accepts case variants of the pinned hostname only", () => {
+    const realms = trustedMcpRealms("example.test");
+    expect(realms.includes("Example.TEST")).toBe(true);
+    expect(realms.includes("other.test")).toBe(false);
   });
 });

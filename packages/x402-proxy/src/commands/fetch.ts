@@ -228,18 +228,10 @@ Examples:
     verbose(`wallet source: ${wallet.source}`);
     verbose(`protocol: ${resolvedProtocol ?? "auto-detect"}, maxDeposit: ${maxDeposit}`);
 
-    // Auto-detect preferred network based on balance when not configured
     let preferredNetwork = config?.defaultNetwork;
-    if (!preferredNetwork && wallet.evmAddress && wallet.solanaAddress) {
-      const { fetchAllBalances } = await import("./wallet.js");
-      const balances = await fetchAllBalances(wallet.evmAddress, wallet.solanaAddress);
-      const evmUsdc = balances.evm ? Number(balances.evm.usdc) : 0;
-      const solUsdc = balances.sol ? Number(balances.sol.usdc) : 0;
-      if (evmUsdc > solUsdc) {
-        preferredNetwork = "base";
-      } else if (solUsdc > evmUsdc) {
-        preferredNetwork = "solana";
-      }
+    if (!preferredNetwork && !flags.network && resolvedProtocol !== "mpp") {
+      const { detectPreferredNetwork } = await import("./wallet.js");
+      preferredNetwork = await detectPreferredNetwork(wallet);
     }
 
     // Build request

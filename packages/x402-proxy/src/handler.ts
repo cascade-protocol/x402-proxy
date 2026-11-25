@@ -2,7 +2,7 @@ import type { x402Client } from "@x402/fetch";
 import { decodePaymentResponseHeader, wrapFetchWithPayment } from "@x402/fetch";
 import { Mppx, tempo } from "mppx/client";
 import { Session } from "mppx/tempo";
-import { parseUnits } from "viem";
+import { formatUnits, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { clearSession, saveSession } from "./lib/config.js";
 import { getMppVoucherHeadroomUsdc, isDebugEnabled } from "./lib/env.js";
@@ -160,6 +160,7 @@ function parseVoucherHeadroom(value: string | undefined): bigint {
 // Bound to mppx's own exports rather than hand-copied: a shape change upstream
 // must fail type-check here instead of surfacing as a runtime payment failure.
 type SessionReceipt = ReturnType<typeof Session.Precompile.Receipt.deserializeSessionReceipt>;
+type ChannelEntry = Parameters<NonNullable<tempo.Parameters["onChannelUpdate"]>>[0];
 type SseEvent = NonNullable<ReturnType<typeof Session.Precompile.SseProtocol.parseEvent>>;
 
 /**
@@ -173,7 +174,68 @@ export function splitSseFrames(buffer: string): { frames: string[]; rest: string
   return { frames: parts.filter((part) => part.trim()), rest };
 }
 
+const PROVIDER_ERROR_PREVIEW_BYTES = 200;
+const SESSION_CLOSE_TIMEOUT_MS = 5_000;
+const SESSION_EXPIRY_MARGIN_MS = 30_000;
+
+function validForManagement(expires: string | undefined, marginMs = 0): boolean {
+  return expires === undefined || Date.parse(expires) > Date.now() + marginMs;
+}
+
+function sameHex(value: unknown, expected: string): boolean {
+  return typeof value === "string" && value.toLowerCase() === expected.toLowerCase();
+}
+
+function matchesSessionChannel(request: Record<string, unknown>, channel: ChannelEntry): boolean {
+  const details = request.methodDetails as
+    | {
+        chainId?: unknown;
+        channelId?: unknown;
+        sessionSnapshot?: { channelId?: unknown };
+      }
+    | undefined;
+  return (
+    sameHex(request.recipient, channel.descriptor.payee) &&
+    sameHex(request.currency, channel.descriptor.token) &&
+    (details?.chainId === undefined || details.chainId === channel.chainId) &&
+    (details?.channelId === undefined || sameHex(details.channelId, channel.channelId)) &&
+    (details?.sessionSnapshot === undefined ||
+      sameHex(details.sessionSnapshot?.channelId, channel.channelId))
+  );
+}
+
+async function responseBodyPreview(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let remaining = PROVIDER_ERROR_PREVIEW_BYTES;
+  let text = "";
+  try {
+    while (remaining > 0) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      const prefix = value.subarray(0, remaining);
+      text += decoder.decode(prefix, { stream: true });
+      remaining -= prefix.byteLength;
+    }
+    void reader.cancel().catch(() => {});
+  } catch {
+    // Keep any provider detail received before the read failed.
+  } finally {
+    reader.releaseLock();
+  }
+  return text;
+}
+
 // --- MPP handler ---
+
+export function challengeAmount(request: Record<string, unknown>): string | undefined {
+  if (typeof request.amount !== "string") return undefined;
+  return formatUnits(
+    BigInt(request.amount),
+    typeof request.decimals === "number" ? request.decimals : 6,
+  );
+}
 
 /**
  * Create an MPP proxy handler using mppx client.
@@ -194,47 +256,42 @@ export async function createMppProxyHandler(opts: {
     methods: [tempo({ account, maxDeposit })],
     polyfill: false,
     onChallenge: async (challenge) => {
-      const req = challenge.request as { amount?: string; decimals?: number };
-      if (req.amount) {
-        lastChallengeAmount = (Number(req.amount) / 10 ** (req.decimals ?? 6)).toString();
-      }
+      lastChallengeAmount = challengeAmount(challenge.request);
       return undefined;
     },
   });
 
   const payerAddress = account.address;
 
-  function injectPayerHeader(init?: RequestInit): RequestInit {
-    const existing =
-      init?.headers instanceof Headers
-        ? Object.fromEntries(init.headers.entries())
-        : ((init?.headers as Record<string, string> | undefined) ?? {});
-    return { ...init, headers: { ...existing, "X-Payer-Address": payerAddress } };
+  function injectPayerHeader(init?: RequestInit): Headers {
+    const headers = new Headers(init?.headers);
+    headers.set("X-Payer-Address", payerAddress);
+    return headers;
   }
 
   type ActiveSession = {
-    channelId?: string;
-    cumulative: bigint;
-    opened: boolean;
-    close: () => Promise<SessionReceipt | undefined>;
-  };
-  type CreateCredentialFn = (context?: Record<string, unknown>) => Promise<string>;
-  type ChannelEntry = {
-    channelId: string;
-    cumulativeAmount: bigint;
-    opened: boolean;
+    channel?: ChannelEntry;
+    close: (signal: AbortSignal) => Promise<SessionReceipt | undefined>;
   };
 
-  const activeSessions = new Set<ActiveSession>();
+  const activeSessions = new Map<string, ActiveSession>();
   let persistedChannelId: string | undefined;
 
   function rememberSession(session: ActiveSession): void {
-    activeSessions.add(session);
-    if (session.channelId && session.channelId !== persistedChannelId) {
-      persistedChannelId = session.channelId;
+    const channel = session.channel;
+    if (!channel?.opened) return;
+    const previous = activeSessions.get(channel.channelId)?.channel;
+    if (!previous || channel.cumulativeAmount >= previous.cumulativeAmount) {
+      activeSessions.set(channel.channelId, session);
+    }
+  }
+
+  function persistSession(channel?: ChannelEntry): void {
+    if (channel && channel.channelId !== persistedChannelId) {
+      persistedChannelId = channel.channelId;
       if (debug) process.stderr.write(`[x402-proxy] channelId: ${persistedChannelId}\n`);
       try {
-        saveSession({ channelId: session.channelId, createdAt: new Date().toISOString() });
+        saveSession({ channelId: channel.channelId, createdAt: new Date().toISOString() });
       } catch {
         // Non-critical
       }
@@ -252,7 +309,7 @@ export async function createMppProxyHandler(opts: {
       network: TEMPO_NETWORK,
       intent: "session",
       amount: spentUsdc,
-      channelId: session.channelId ?? undefined,
+      channelId: session.channel?.channelId,
       receipt: {
         method: receipt.method,
         reference: receipt.reference,
@@ -268,10 +325,10 @@ export async function createMppProxyHandler(opts: {
     // Non-streaming uses stateless one-shot charges (not sessions) - intentional.
     // Each fetch() handles its own 402 challenge/response cycle independently.
     async fetch(input: string | URL, init?: RequestInit): Promise<Response> {
-      const response = await mppx.fetch(
-        typeof input === "string" ? input : input.toString(),
-        injectPayerHeader(init),
-      );
+      const response = await mppx.fetch(typeof input === "string" ? input : input.toString(), {
+        ...init,
+        headers: injectPayerHeader(init),
+      });
 
       // Extract payment info from Payment-Receipt header
       const receiptHeader = response.headers.get("Payment-Receipt");
@@ -301,98 +358,164 @@ export async function createMppProxyHandler(opts: {
 
     async sse(input: string | URL, init?: RequestInit): Promise<AsyncIterable<string>> {
       const url = typeof input === "string" ? input : input.toString();
-      let createCredential: CreateCredentialFn | undefined;
       let spent = 0n;
-      const session: ActiveSession = {
-        channelId: undefined,
-        cumulative: 0n,
-        opened: false,
-        async close() {
-          if (!session.opened || !session.channelId || !createCredential) return undefined;
-
-          const credential = await createCredential({
-            action: "close",
-            channelId: session.channelId,
-            cumulativeAmountRaw: spent.toString(),
-          });
-          const response = await mppx.rawFetch(url, {
-            method: "POST",
-            headers: { Authorization: credential, "X-Payer-Address": payerAddress },
-          });
-          const receiptHeader = response.headers.get("Payment-Receipt");
-          if (!receiptHeader) return undefined;
-          try {
-            const receipt = Session.Precompile.Receipt.deserializeSessionReceipt(receiptHeader);
-            spent = spent > BigInt(receipt.spent) ? spent : BigInt(receipt.spent);
-            return receipt;
-          } catch {
-            return undefined;
-          }
-        },
-      };
-
       const sessionMppx = Mppx.create({
         methods: [
           tempo({
             account,
             maxDeposit,
-            onChannelUpdate(entry: ChannelEntry) {
-              session.channelId = entry.channelId;
-              session.cumulative = entry.cumulativeAmount;
-              session.opened = entry.opened;
-              if (entry.channelId && entry.channelId !== persistedChannelId) {
-                persistedChannelId = entry.channelId;
-                if (debug) process.stderr.write(`[x402-proxy] channelId: ${persistedChannelId}\n`);
-                try {
-                  saveSession({ channelId: entry.channelId, createdAt: new Date().toISOString() });
-                } catch {
-                  // Non-critical
-                }
-              }
+            origin: new URL(url).origin,
+            onChannelUpdate(entry) {
+              session.channel = entry;
+              if (activeSessions.has(entry.channelId)) rememberSession(session);
             },
           }),
         ],
         polyfill: false,
-        onChallenge: async (challenge, helpers) => {
-          const req = challenge.request as { amount?: string; decimals?: number };
-          if (req.amount) {
-            lastChallengeAmount = (Number(req.amount) / 10 ** (req.decimals ?? 6)).toString();
-          }
-          createCredential = helpers.createCredential as CreateCredentialFn;
-          return undefined;
-        },
       });
+      const headers = injectPayerHeader(init);
+      headers.set("Accept", "text/event-stream");
+      const prepared = await sessionMppx.prepareRequest(url, { ...init, headers });
+      const managementUrl = prepared.request.url;
+      const hostname = new URL(managementUrl).hostname.toLowerCase();
+      let currentChallenge = prepared.payment?.challenge;
+      let challengeResponse =
+        prepared.payment && new Response(null, { status: 402, headers: prepared.response.headers });
 
-      const response = await sessionMppx.fetch(
-        url,
-        injectPayerHeader({
-          ...init,
-          headers: {
-            ...((init?.headers instanceof Headers
-              ? Object.fromEntries(init.headers.entries())
-              : ((init?.headers as Record<string, string> | undefined) ?? {})) as Record<
-              string,
-              string
-            >),
-            Accept: "text/event-stream",
-          },
-        }),
-      );
+      async function postManagement(
+        action: "voucher" | "close",
+        amount: bigint,
+        signal?: AbortSignal | null,
+      ) {
+        const channel = session.channel;
+        if (!channel || !currentChallenge || !challengeResponse)
+          throw new Error("MPP session channel is unavailable");
+
+        const postCredential = async (response: Response, expectedId?: string) => {
+          const payment = await sessionMppx.preparePayment(response, {
+            orderChallenges(offers) {
+              const matching = offers.filter(
+                ({ challenge }) =>
+                  challenge.method === "tempo" &&
+                  challenge.intent === "session" &&
+                  challenge.realm.toLowerCase() === hostname &&
+                  (expectedId === undefined
+                    ? validForManagement(challenge.expires)
+                    : challenge.id === expectedId) &&
+                  matchesSessionChannel(challenge.request, channel),
+              );
+              if (!matching.length)
+                throw new Error(
+                  "No matching unexpired Tempo session challenge for this channel and host",
+                );
+              return matching;
+            },
+          });
+          signal?.throwIfAborted();
+          const credential = await payment.createCredential({
+            action,
+            channelId: channel.channelId,
+            descriptor: channel.descriptor,
+            cumulativeAmountRaw: amount.toString(),
+          });
+          signal?.throwIfAborted();
+          challengeResponse = response;
+          currentChallenge = payment.challenge;
+          return sessionMppx.rawFetch(
+            managementUrl,
+            payment.setCredential(
+              {
+                method: "POST",
+                redirect: "manual",
+                signal,
+                headers: { "X-Payer-Address": payerAddress },
+              },
+              credential,
+            ),
+          );
+        };
+
+        let offer = challengeResponse;
+        let expectedId: string | undefined = currentChallenge.id;
+        if (!validForManagement(currentChallenge.expires, SESSION_EXPIRY_MARGIN_MS)) {
+          const probe = await sessionMppx.rawFetch(managementUrl, {
+            method: "POST",
+            redirect: "manual",
+            signal,
+            headers: {
+              "Accept-Payment": "tempo/session",
+              "Payment-Session": channel.channelId,
+              "X-Payer-Address": payerAddress,
+            },
+          });
+          void probe.body?.cancel().catch(() => {});
+          if (probe.status !== 402)
+            throw new Error(`Expired MPP session challenge: refresh returned HTTP ${probe.status}`);
+          offer = new Response(null, { status: 402, headers: probe.headers });
+          expectedId = undefined;
+        }
+
+        const result = await postCredential(offer, expectedId);
+        if (result.status !== 402) return result;
+        void result.body?.cancel().catch(() => {});
+        return postCredential(new Response(null, { status: 402, headers: result.headers }));
+      }
+
+      const session: ActiveSession = {
+        async close(signal) {
+          const channel = session.channel;
+          if (!channel?.opened) return undefined;
+          const amount = spent < channel.cumulativeAmount ? spent : channel.cumulativeAmount;
+          const response = await postManagement("close", amount, signal);
+          const receiptHeader = response.headers.get("Payment-Receipt");
+          void response.body?.cancel().catch(() => {});
+          if (!response.ok) throw new Error(`Close POST failed with status ${response.status}`);
+          if (!receiptHeader) return undefined;
+          try {
+            return Session.Precompile.Receipt.deserializeSessionReceipt(receiptHeader);
+          } catch {
+            return undefined;
+          }
+        },
+      };
+      let response: Response;
+      if (prepared.payment) {
+        try {
+          response = await prepared.payment.pay();
+        } finally {
+          rememberSession(session);
+          void prepared.response.body?.cancel().catch(() => {});
+        }
+      } else {
+        response = prepared.response;
+      }
+      if (!response.ok) {
+        const body = await responseBodyPreview(response);
+        throw new Error(
+          `MPP SSE request failed with status ${response.status}${body ? `: ${body}` : ""}`,
+        );
+      }
 
       if (!response.body) throw new Error("MPP SSE response has no body");
-      rememberSession(session);
+      persistSession(session.channel);
       paymentQueue.push({ protocol: "mpp", network: TEMPO_NETWORK, intent: "session" });
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      async function* iterate(): AsyncGenerator<string> {
+      async function* iterate(
+        body: ReadableStream<Uint8Array>,
+        signal?: AbortSignal | null,
+      ): AsyncGenerator<string> {
+        const reader = body.getReader();
+        const decoder = new TextDecoder();
+        let completed = false;
         let buffer = "";
 
         try {
           while (true) {
             const { done, value } = await reader.read();
-            if (done) break;
+            if (done) {
+              completed = true;
+              break;
+            }
 
             buffer += decoder.decode(value, { stream: true });
             const { frames, rest } = splitSseFrames(buffer);
@@ -410,8 +533,9 @@ export async function createMppProxyHandler(opts: {
                   spent = spent > BigInt(event.data.spent) ? spent : BigInt(event.data.spent);
                   break;
                 case "payment-need-voucher": {
-                  if (!createCredential) {
-                    throw new Error("MPP voucher requested before challenge helper was captured");
+                  const channel = session.channel;
+                  if (!channel || channel.channelId !== event.data.channelId) {
+                    throw new Error("MPP voucher requested for an unexpected channel");
                   }
 
                   const requiredCumulative = BigInt(event.data.requiredCumulative);
@@ -421,23 +545,19 @@ export async function createMppProxyHandler(opts: {
                     deposit,
                     headroom: voucherHeadroomRaw,
                   });
-                  const credential = await createCredential({
-                    action: "voucher",
-                    channelId: event.data.channelId,
-                    cumulativeAmountRaw: target.toString(),
-                  });
-                  const voucherResponse = await sessionMppx.rawFetch(url, {
-                    method: "POST",
-                    headers: { Authorization: credential, "X-Payer-Address": payerAddress },
-                    signal: init?.signal,
-                  });
-                  if (!voucherResponse.ok) {
-                    const body = await voucherResponse.text().catch(() => "");
+                  if (target > channel.deposit)
                     throw new Error(
-                      `Voucher POST failed with status ${voucherResponse.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+                      `MPP voucher exceeds channel deposit: required ${requiredCumulative}, target ${target}, deposit ${channel.deposit}`,
+                    );
+                  const voucherResponse = await postManagement("voucher", target, signal);
+                  if (!voucherResponse.ok) {
+                    const body = await responseBodyPreview(voucherResponse);
+                    throw new Error(
+                      `Voucher POST failed with status ${voucherResponse.status}${body ? `: ${body}` : ""}`,
                     );
                   }
                   const receiptHeader = voucherResponse.headers.get("Payment-Receipt");
+                  void voucherResponse.body?.cancel().catch(() => {});
                   if (receiptHeader) {
                     try {
                       const receipt =
@@ -453,52 +573,51 @@ export async function createMppProxyHandler(opts: {
             }
           }
         } finally {
+          if (!completed) void reader.cancel().catch(() => {});
           reader.releaseLock();
         }
       }
 
-      return iterate();
+      return iterate(response.body, init?.signal);
     },
 
     shiftPayment: () => paymentQueue.shift(),
 
     async close(): Promise<void> {
-      const sessions = Array.from(activeSessions);
-      if (sessions.length === 0) return;
-
-      const byChannelId = new Map<string, ActiveSession>();
-      const sessionsWithoutChannel: ActiveSession[] = [];
-
-      for (const session of sessions) {
-        if (!session.opened) continue;
-        if (!session.channelId) {
-          sessionsWithoutChannel.push(session);
-          continue;
-        }
-        const existing = byChannelId.get(session.channelId);
-        if (!existing || session.cumulative > existing.cumulative) {
-          byChannelId.set(session.channelId, session);
-        }
-      }
-
-      for (const session of sessions) activeSessions.delete(session);
-
-      const sessionsToClose = [...byChannelId.values(), ...sessionsWithoutChannel];
-      let shouldClearPersistedSession = false;
-      for (const session of sessionsToClose) {
-        const receipt = await session.close();
-        if (session.channelId && session.channelId === persistedChannelId) {
-          shouldClearPersistedSession = true;
-        }
-        pushCloseReceipt(session, receipt);
-      }
-
-      if (shouldClearPersistedSession) {
-        try {
-          clearSession();
-        } catch {
-          // Non-critical
-        }
+      const sessions = [...activeSessions];
+      if (!sessions.length) return;
+      activeSessions.clear();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), SESSION_CLOSE_TIMEOUT_MS);
+      const deadline = new Promise<void>((resolve) =>
+        controller.signal.addEventListener("abort", () => resolve(), { once: true }),
+      );
+      try {
+        await Promise.race([
+          deadline,
+          Promise.all(
+            sessions.map(async ([channelId, session]) => {
+              try {
+                const receipt = await session.close(controller.signal);
+                if (controller.signal.aborted) return;
+                pushCloseReceipt(session, receipt);
+                if (channelId === persistedChannelId && !activeSessions.has(channelId)) {
+                  clearSession();
+                  persistedChannelId = undefined;
+                }
+              } catch (error) {
+                if (debug)
+                  process.stderr.write(
+                    `[x402-proxy] close failed for ${channelId}: ${error instanceof Error ? error.message : "unknown error"}\n`,
+                  );
+              }
+            }),
+          ),
+        ]);
+        if (controller.signal.aborted && debug)
+          process.stderr.write("[x402-proxy] session close timed out\n");
+      } finally {
+        clearTimeout(timeout);
       }
     },
   };

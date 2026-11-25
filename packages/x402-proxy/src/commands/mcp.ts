@@ -1,10 +1,17 @@
 declare const __VERSION__: string;
 
-import { AsyncLocalStorage } from "node:async_hooks";
 import { buildCommand, type CommandContext } from "@stricli/core";
-import { TEMPO_NETWORK } from "../handler.js";
-import { appendHistory, displayNetwork, formatAmount, type TxRecord } from "../history.js";
-import { getHistoryPath, loadConfig } from "../lib/config.js";
+import type { McpClient } from "mppx/mcp/client";
+import { challengeAmount, TEMPO_NETWORK } from "../handler.js";
+import {
+  appendHistory,
+  calcSpend,
+  displayNetwork,
+  formatAmount,
+  readHistory,
+  type TxRecord,
+} from "../history.js";
+import { getHistoryPath, loadConfig, type ProxyConfig } from "../lib/config.js";
 import { dim, error, warn } from "../lib/output.js";
 import { buildX402Client, resolveWallet } from "../lib/resolve-wallet.js";
 
@@ -55,6 +62,106 @@ type X402SettleResponse = {
 
 const X402_PAYMENT_META_KEY = "x402/payment";
 const X402_PAYMENT_RESPONSE_META_KEY = "x402/payment-response";
+
+export function trustedMcpRealms(hostname: string): readonly string[] {
+  // mppx checks this list with includes() before invoking the approval hook.
+  return Object.assign([hostname], {
+    includes: (realm: string) => realm.toLowerCase() === hostname.toLowerCase(),
+  });
+}
+
+export function createMppToolPayment(config: ProxyConfig | null, pending: Map<symbol, number>) {
+  const call = Symbol();
+  let approvedAmount: number | undefined;
+  return {
+    get amount() {
+      return approvedAmount;
+    },
+    approve(challenge: { intent: string; request: Record<string, unknown> }) {
+      if (approvedAmount !== undefined)
+        throw new Error("Only one payment is allowed per tool call");
+      if (
+        (config?.spendLimitPerTx !== undefined || config?.spendLimitDaily !== undefined) &&
+        challenge.request.decimals !== undefined &&
+        challenge.request.decimals !== 6
+      )
+        throw new Error("Expected six-decimal Tempo payment units");
+      const units = challengeAmount(challenge.request);
+      if (units === undefined) throw new Error("MPP challenge has no payment amount");
+      const amount = Number(units);
+      let reservation = amount;
+      if (
+        challenge.intent === "session" &&
+        typeof challenge.request.suggestedDeposit === "string"
+      ) {
+        const suggested = Number(
+          challengeAmount({ ...challenge.request, amount: challenge.request.suggestedDeposit }),
+        );
+        reservation = Math.max(
+          amount,
+          Math.min(suggested, Number(config?.mppSessionBudget ?? "1")),
+        );
+      }
+      if (!Number.isFinite(reservation) || amount < 0)
+        throw new Error("Invalid MPP payment amount");
+      if (config?.spendLimitPerTx !== undefined && reservation > config.spendLimitPerTx)
+        throw new Error(`Payment exceeds per-transaction limit of ${config.spendLimitPerTx} USDC`);
+      if (reservation > 0 && config?.spendLimitDaily !== undefined) {
+        const spent = calcSpend(readHistory(getHistoryPath())).today;
+        const reserved = [...pending.values()].reduce((sum, value) => sum + value, 0);
+        if (
+          spent >= config.spendLimitDaily ||
+          Math.round((spent + reserved + reservation) * 1e6) > config.spendLimitDaily * 1e6
+        )
+          throw new Error(`Daily spend limit of ${config.spendLimitDaily} USDC would be exceeded`);
+      }
+      approvedAmount = amount;
+      pending.set(call, reservation);
+      return true;
+    },
+    release() {
+      pending.delete(call);
+    },
+  };
+}
+
+export async function callMppTool(
+  mppClient: Pick<McpClient.wrap.McpClient, "callTool">,
+  params: { name: string; arguments: Record<string, unknown> },
+  config: ProxyConfig | null,
+  pendingPayments: Map<symbol, number>,
+  from: string,
+) {
+  const payment = createMppToolPayment(config, pendingPayments);
+  try {
+    const result = await mppClient.callTool(params, undefined, {
+      onPaymentRequired: payment.approve,
+    });
+    const amount = payment.amount;
+    if ((amount !== undefined && amount > 0) || result.receipt) {
+      const record: TxRecord = {
+        t: Date.now(),
+        ok: true,
+        kind: "mpp_payment",
+        net: TEMPO_NETWORK,
+        from,
+        tx: result.receipt?.reference,
+        amount,
+        token: "USDC",
+        label: `mcp:${params.name}`,
+      };
+      appendHistory(getHistoryPath(), record);
+      const amountStr = amount !== undefined ? formatAmount(amount, "USDC") : "";
+      warn(
+        `  MPP payment for tool "${params.name}" (Tempo)${amountStr ? ` \u00b7 ${amountStr}` : ""}`,
+      );
+    }
+
+    return normalizeCallToolResult(result as CallToolResultLike);
+  } finally {
+    payment.release();
+  }
+}
 
 export function cloneTool(tool: ToolDefinition): ToolDefinition {
   // Strip outputSchema so downstream clients don't attempt AJV validation
@@ -284,18 +391,10 @@ Wallet is auto-generated on first run. No env vars needed.`,
     }
 
     async function startX402Proxy() {
-      // Auto-detect preferred network based on balance when not configured
       let preferredNetwork = config?.defaultNetwork;
-      if (!preferredNetwork && wallet.evmAddress && wallet.solanaAddress) {
-        const { fetchAllBalances } = await import("./wallet.js");
-        const balances = await fetchAllBalances(wallet.evmAddress, wallet.solanaAddress);
-        const evmUsdc = balances.evm ? Number(balances.evm.usdc) : 0;
-        const solUsdc = balances.sol ? Number(balances.sol.usdc) : 0;
-        if (evmUsdc > solUsdc) {
-          preferredNetwork = "base";
-        } else if (solUsdc > evmUsdc) {
-          preferredNetwork = "solana";
-        }
+      if (!preferredNetwork && !flags.network) {
+        const { detectPreferredNetwork } = await import("./wallet.js");
+        preferredNetwork = await detectPreferredNetwork(wallet);
       }
 
       const x402PaymentClient = await buildX402Client(wallet, {
@@ -450,39 +549,21 @@ Wallet is auto-generated on first run. No env vars needed.`,
       }
 
       const { tempo } = await import("mppx/client");
-      const { McpClient } = await import("mppx/mcp-sdk/client");
+      const { McpClient } = await import("mppx/mcp/client");
       const { privateKeyToAccount } = await import("viem/accounts");
 
       const account = privateKeyToAccount(wallet.evmKey as `0x${string}`);
       const maxDeposit = config?.mppSessionBudget ?? "1";
-
-      // Per-call async context to capture payment amounts without races.
-      // Each concurrent callTool gets its own store via AsyncLocalStorage.
-      const challengeAmountStore = new AsyncLocalStorage<{ amount?: number }>();
-      const tempoMethods = tempo({ account, maxDeposit });
-      const wrappedMethods = tempoMethods.map((m) => ({
-        ...m,
-        createCredential: async (params: { challenge: { request: Record<string, unknown> } }) => {
-          const req = params.challenge.request as { amount?: string; decimals?: number };
-          const store = challengeAmountStore.getStore();
-          if (req.amount && store) {
-            store.amount = Number(req.amount) / 10 ** (req.decimals ?? 6);
-          }
-          return (m.createCredential as (p: unknown) => Promise<string>)(params);
-        },
-      }));
 
       // Connect base client to remote MCP server
       const remoteClient = new Client({ name: "x402-proxy", version: __VERSION__ });
 
       await connectTransport(remoteClient);
 
-      // McpClient expects Client resolved with zod@3 (via mppx's own SDK copy),
-      // but ours resolves with zod@4. Structurally identical.
-      const mppClient = McpClient.wrap(
-        remoteClient as unknown as Parameters<typeof McpClient.wrap>[0],
-        { methods: wrappedMethods as unknown as Parameters<typeof McpClient.wrap>[1]["methods"] },
-      );
+      const mppClient = McpClient.wrap(remoteClient, {
+        methods: [tempo({ account, maxDeposit })],
+        trustedTempoProofRealms: trustedMcpRealms(new URL(remoteUrl).hostname),
+      });
 
       // Discover remote capabilities via base client
       let { tools } = await remoteClient.listTools();
@@ -516,34 +597,16 @@ Wallet is auto-generated on first run. No env vars needed.`,
         tools: tools.map((t) => cloneTool(t as ToolDefinition)),
       }));
 
+      const pendingPayments = new Map<symbol, number>();
       localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
-        const store = { amount: undefined as number | undefined };
-        return challengeAmountStore.run(store, async () => {
-          const result = await mppClient.callTool({ name, arguments: args ?? {} });
-
-          // Record MPP payment if receipt present
-          if (result.receipt) {
-            const record: TxRecord = {
-              t: Date.now(),
-              ok: true,
-              kind: "mpp_payment",
-              net: TEMPO_NETWORK,
-              from: wallet.evmAddress ?? "unknown",
-              tx: result.receipt.reference,
-              amount: store.amount,
-              token: "USDC",
-              label: `mcp:${name}`,
-            };
-            appendHistory(getHistoryPath(), record);
-            const amountStr = store.amount !== undefined ? formatAmount(store.amount, "USDC") : "";
-            warn(
-              `  MPP payment for tool "${name}" (Tempo)${amountStr ? ` \u00b7 ${amountStr}` : ""}`,
-            );
-          }
-
-          return normalizeCallToolResult(result as CallToolResultLike);
-        });
+        return callMppTool(
+          mppClient,
+          { name, arguments: args ?? {} },
+          config,
+          pendingPayments,
+          wallet.evmAddress ?? "unknown",
+        );
       });
 
       if (remoteResources.length > 0) {

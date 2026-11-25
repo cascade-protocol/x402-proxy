@@ -1,8 +1,17 @@
 import { base58 } from "@scure/base";
-import type { PaymentRequirements } from "@x402/fetch";
-import { describe, expect, it } from "vitest";
-import { deriveSolanaKeypair } from "./derive.js";
 import {
+  generateKeyPairSigner,
+  getCompiledTransactionMessageDecoder,
+  getTransactionDecoder,
+} from "@solana/kit";
+import type { PaymentRequirements } from "@x402/fetch";
+import { generatePrivateKey } from "viem/accounts";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { detectPreferredNetwork } from "../commands/wallet.js";
+import { deriveSolanaKeypair } from "./derive.js";
+import { OptimizedSvmScheme } from "./optimized-svm-scheme.js";
+import {
+  buildX402Client,
   createAddressValidationPolicy,
   createNetworkFilter,
   createNetworkPreference,
@@ -12,6 +21,7 @@ import {
 
 // --- Test fixtures ---
 
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const TEST_MNEMONIC =
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
 
@@ -33,6 +43,185 @@ const solanaReq = makeReq({ network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }
 const tempoReq = makeReq({ network: "eip155:4217" });
 const bothReqs = [baseReq, solanaReq];
 const allReqs = [baseReq, solanaReq, tempoReq];
+
+describe("configured Solana spend limits", () => {
+  it.each([
+    { perTx: undefined, expected: "selected Solana" },
+    { perTx: 3, expected: "selected Solana" },
+    { perTx: 1, expected: "exceeds per-transaction limit" },
+  ])("applies the proxy limit of $perTx to a 2 USDC offer", async ({ perTx, expected }) => {
+    const keypair = deriveSolanaKeypair(TEST_MNEMONIC);
+    const client = await buildX402Client(
+      { source: "flag", solanaKey: new Uint8Array([...keypair.secretKey, ...keypair.publicKey]) },
+      { network: "solana", spendLimitPerTx: perTx },
+    );
+    client.onBeforePaymentCreation(async () => ({ abort: true, reason: "selected Solana" }));
+    await expect(
+      client.createPaymentPayload({
+        x402Version: 2,
+        resource: { url: "https://example.test" },
+        accepts: [
+          {
+            ...solanaReq,
+            asset: USDC_MINT,
+            amount: "2000000",
+            payTo: keypair.address,
+          },
+        ],
+      }),
+    ).rejects.toThrow(expected);
+  });
+});
+
+it("selects a network using only the two USDC balances and a shared deadline", async ({
+  onTestFinished,
+}) => {
+  const methods: string[] = [];
+  const signals = new Set<AbortSignal | null | undefined>();
+  const timeout = vi.spyOn(AbortSignal, "timeout");
+  onTestFinished(() => {
+    timeout.mockRestore();
+    vi.unstubAllGlobals();
+  });
+  vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+    const { method } = JSON.parse(String(init.body));
+    methods.push(method);
+    signals.add(init.signal);
+    return Response.json({
+      result: method === "eth_call" ? "0xf4240" : { value: { uiAmountString: "2" } },
+    });
+  });
+  expect(
+    await detectPreferredNetwork({ evmAddress: baseReq.payTo, solanaAddress: USDC_MINT }),
+  ).toBe("solana");
+  expect(methods.sort()).toEqual(["eth_call", "getTokenAccountBalance"]);
+  expect(timeout).toHaveBeenCalledWith(3000);
+  expect([...signals]).toEqual([timeout.mock.results[0].value]);
+});
+
+it("rejects an unlisted Base asset before signing", async () => {
+  const client = await buildX402Client({ source: "flag", evmKey: generatePrivateKey() });
+  await expect(
+    client.createPaymentPayload({
+      x402Version: 2,
+      resource: { url: "https://example.test" },
+      accepts: [{ ...baseReq, asset: "0x0000000000000000000000000000000000000001" }],
+    }),
+  ).rejects.toThrow("only default assets or entries");
+});
+
+describe("OptimizedSvmScheme", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const rpcBlockhash = "11111111111111111111111111111111";
+  const hintedBlockhash = "So11111111111111111111111111111111111111112";
+
+  async function buildTransaction(extra: Record<string, unknown>) {
+    const rpc = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const { method, id } = (await new Request(input, init).json()) as {
+        method: string;
+        id: string;
+      };
+      expect(method).toBe("getLatestBlockhash");
+      return Response.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          context: { slot: 1 },
+          value: { blockhash: rpcBlockhash, lastValidBlockHeight: 10 },
+        },
+      });
+    });
+    vi.stubGlobal("fetch", rpc);
+    const [signer, payee, feePayer] = await Promise.all([
+      generateKeyPairSigner(),
+      generateKeyPairSigner(),
+      generateKeyPairSigner(),
+    ]);
+    const scheme = new OptimizedSvmScheme(signer);
+    const { payload } = await scheme.createPaymentPayload(2, {
+      ...solanaReq,
+      asset: USDC_MINT,
+      payTo: payee.address,
+      extra: { feePayer: feePayer.address, ...extra },
+    });
+    const tx = getTransactionDecoder().decode(Buffer.from(payload.transaction, "base64"));
+    const message = getCompiledTransactionMessageDecoder().decode(tx.messageBytes);
+    if (message.version !== 0) throw new Error("Expected a v0 transaction");
+    const instructions = message.instructions.map((ix) => ({
+      program: message.staticAccounts[ix.programAddressIndex],
+      data: Buffer.from(ix.data ?? []),
+    }));
+    return { message, instructions, rpc };
+  }
+
+  it("preserves the v0 transfer layout and random nonce without seller hints", async () => {
+    const { message, instructions, rpc } = await buildTransaction({});
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(message.lifetimeToken).toBe(rpcBlockhash);
+    expect(message.staticAccounts).toHaveLength(8);
+    expect(instructions.map((ix) => ix.program)).toEqual([
+      "ComputeBudget111111111111111111111111111111",
+      "ComputeBudget111111111111111111111111111111",
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+    ]);
+    expect(instructions.slice(0, 3).map((ix) => ix.data.toString("hex"))).toEqual([
+      "02204e0000",
+      "030100000000000000",
+      "0ca08601000000000006",
+    ]);
+    expect(instructions[3].data.toString()).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("uses the seller blockhash without contacting RPC", async () => {
+    const { rpc, message } = await buildTransaction({
+      recentBlockhash: hintedBlockhash,
+      lastValidBlockHeight: 99,
+    });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(message.lifetimeToken).toBe(hintedBlockhash);
+  });
+
+  it("uses a fresh nonce for empty seller memos sharing a blockhash", async () => {
+    const extra = { memo: "", recentBlockhash: hintedBlockhash, lastValidBlockHeight: 99 };
+    const first = (await buildTransaction(extra)).instructions[3].data.toString();
+    const second = (await buildTransaction(extra)).instructions[3].data.toString();
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+  });
+
+  it("encodes the supplied memo exactly", async () => {
+    const memo = "\u00e9".repeat(128);
+    const { instructions } = await buildTransaction({ memo });
+    expect(instructions[3].data).toEqual(Buffer.from(memo));
+  });
+
+  it("rejects a seller memo larger than 256 UTF-8 bytes", async () => {
+    await expect(buildTransaction({ memo: `${"\u00e9".repeat(128)}a` })).rejects.toThrow(
+      /memo.*256 bytes/,
+    );
+  });
+
+  it.each([
+    { versions: [] },
+    { versions: [1] },
+  ])("refuses incompatible transaction versions before preparing payment (%j)", async ({
+    versions,
+  }) => {
+    const signer = await generateKeyPairSigner();
+    const scheme = new OptimizedSvmScheme(signer);
+    await expect(
+      scheme.createPaymentPayload(2, {
+        ...solanaReq,
+        asset: USDC_MINT,
+        payTo: signer.address,
+        extra: { transactionVersions: versions },
+      }),
+    ).rejects.toThrow("unsupported_transaction_version");
+  });
+});
 
 // --- networkToCaipPrefix ---
 

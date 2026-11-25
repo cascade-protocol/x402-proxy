@@ -1,14 +1,15 @@
 import { address, getAddressEncoder, getProgramDerivedAddress } from "@solana/kit";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
+import { tempo } from "viem/chains";
 import { calcSpend, formatAmount, formatTxLine, formatUsdcValue, readHistory } from "../history.js";
 import { getHistoryPath } from "../lib/config.js";
 import { dim, info } from "../lib/output.js";
 import { resolveWallet } from "../lib/resolve-wallet.js";
 
+const TEMPO_RPC = tempo.rpcUrls.default.http[0];
 const BASE_RPC = "https://mainnet.base.org";
 const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
-const TEMPO_RPC = "https://rpc.presto.tempo.xyz";
 const MONAD_RPC = "https://rpc.monad.xyz";
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_TEMPO = "0x20C000000000000000000000b9537d11c60E8b50";
@@ -24,9 +25,15 @@ type SolanaBalanceResult = {
   };
 };
 
-async function rpcCall(url: string, method: string, params: unknown[]): Promise<unknown> {
+async function rpcCall(
+  url: string,
+  method: string,
+  params: unknown[],
+  signal?: AbortSignal,
+): Promise<unknown> {
   const res = await fetch(url, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
   });
@@ -34,16 +41,24 @@ async function rpcCall(url: string, method: string, params: unknown[]): Promise<
   return res.json();
 }
 
-export async function fetchEvmBalances(address: string): Promise<{ eth: string; usdc: string }> {
-  const usdcData = `0x70a08231${address.slice(2).padStart(64, "0")}`;
-  const [ethRes, usdcRes] = (await Promise.all([
-    rpcCall(BASE_RPC, "eth_getBalance", [address, "latest"]),
-    rpcCall(BASE_RPC, "eth_call", [{ to: USDC_BASE, data: usdcData }, "latest"]),
-  ])) as [RpcResult, RpcResult];
+async function baseUsdcBalance(address: string, signal?: AbortSignal): Promise<number> {
+  const data = `0x70a08231${address.slice(2).padStart(64, "0")}`;
+  const res = (await rpcCall(
+    BASE_RPC,
+    "eth_call",
+    [{ to: USDC_BASE, data }, "latest"],
+    signal,
+  )) as RpcResult;
+  return res.result ? Number(BigInt(res.result)) / 1e6 : Number.NaN;
+}
 
+export async function fetchEvmBalances(address: string): Promise<{ eth: string; usdc: string }> {
+  const [ethRes, usdc] = await Promise.all([
+    rpcCall(BASE_RPC, "eth_getBalance", [address, "latest"]) as Promise<RpcResult>,
+    baseUsdcBalance(address),
+  ]);
   const eth = ethRes.result ? (Number(BigInt(ethRes.result)) / 1e18).toFixed(6) : "?";
-  const usdc = usdcRes.result ? formatUsdcValue(Number(BigInt(usdcRes.result)) / 1e6) : "?";
-  return { eth, usdc };
+  return { eth, usdc: Number.isFinite(usdc) ? formatUsdcValue(usdc) : "?" };
 }
 
 export async function fetchTempoBalances(address: string): Promise<{ usdc: string }> {
@@ -81,19 +96,41 @@ async function getUsdcAta(owner: string): Promise<string> {
   return ata;
 }
 
+async function solanaUsdcBalance(owner: string, signal?: AbortSignal): Promise<number> {
+  const ata = await getUsdcAta(owner);
+  const res = (await rpcCall(
+    SOLANA_RPC,
+    "getTokenAccountBalance",
+    [ata],
+    signal,
+  )) as SolanaBalanceResult;
+  return Number(res.result?.value?.uiAmountString ?? 0);
+}
+
+export async function detectPreferredNetwork(wallet: {
+  evmAddress?: string;
+  solanaAddress?: string;
+}): Promise<string | undefined> {
+  if (!wallet.evmAddress || !wallet.solanaAddress) return undefined;
+  const signal = AbortSignal.timeout(3000);
+  const [base, solana] = await Promise.all([
+    baseUsdcBalance(wallet.evmAddress, signal).catch(() => 0),
+    solanaUsdcBalance(wallet.solanaAddress, signal).catch(() => 0),
+  ]);
+  if (base > solana) return "base";
+  if (solana > base) return "solana";
+  return undefined;
+}
+
 export async function fetchSolanaBalances(
   ownerAddress: string,
 ): Promise<{ sol: string; usdc: string }> {
-  const ata = await getUsdcAta(ownerAddress);
-  const [solRes, usdcRes] = (await Promise.all([
-    rpcCall(SOLANA_RPC, "getBalance", [ownerAddress]),
-    rpcCall(SOLANA_RPC, "getTokenAccountBalance", [ata]),
-  ])) as [{ result?: { value?: number } }, SolanaBalanceResult];
-
+  const [solRes, usdc] = await Promise.all([
+    rpcCall(SOLANA_RPC, "getBalance", [ownerAddress]) as Promise<{ result?: { value?: number } }>,
+    solanaUsdcBalance(ownerAddress),
+  ]);
   const sol = solRes.result?.value != null ? (solRes.result.value / 1e9).toFixed(6) : "?";
-  const usdcVal = usdcRes.result?.value;
-  const usdc = usdcVal ? formatUsdcValue(Number(usdcVal.uiAmountString)) : "0";
-  return { sol, usdc };
+  return { sol, usdc: formatUsdcValue(usdc) };
 }
 
 export function balanceLine(usdc: string, native: string, nativeSymbol: string): string {

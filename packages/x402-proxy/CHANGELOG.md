@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-25
+
+### Fixed
+
+- `wallet` and `status` now show the Tempo USDC balance.
+- Streaming requests with `--protocol mpp` exit with status 1 on an upstream HTTP error and include the first 200 bytes of the provider's response in the error message.
+- Solana payments now honor the seller's recent blockhash hint and UTF-8 memo. Memos can be up to 256 bytes. Payments without a seller memo continue to use a random nonce.
+- The MCP proxy enforces `spendLimitPerTx` and `spendLimitDaily` for MPP tool calls. When an approved paid call returns a result, its amount counts toward daily spend even if the result reports an error or omits the receipt. Zero-cost proofs remain available at the daily limit.
+- Streaming MPP sessions refresh challenges 30 seconds before expiry. A voucher or close POST rejected with HTTP 402 retries once when the server offers a fresh challenge for the same host and channel.
+
+### Changed
+
+- Tempo session payments and zero-amount proofs require the challenge realm to match the upstream hostname, ignoring case. A local server must issue its challenge for the hostname the client uses.
+- OpenClaw records an unsuccessful inference history entry when an upstream MPP stream fails and ends the stream without a final `[DONE]` event.
+- Solana payment offers that advertise transaction versions must include version 0.
+- Streaming MPP requests send the opening payment once. A replacement HTTP 402 ends that opening request.
+- The MCP proxy allows one MPP payment per tool call. If the paid attempt requests another payment, the proxy reports `Only one payment is allowed per tool call` in place of the server's verification error.
+- For MPP session tools, the suggested deposit counts toward the per-transaction check up to `mppSessionBudget`. The proxy refuses the call if that deposit exceeds `spendLimitPerTx`.
+- The proxy attempts to close opened streaming channels at exit, including after an upstream stream failure. Shutdown waits up to five seconds. Close failures appear with `X402_PROXY_DEBUG=1`. The CLI's `--verbose` success message does not confirm settlement.
+- For library users, the exported `x402Client` now accepts only default assets and caps each payment at $1 by default. Call `.setSpendControls(false)` to opt out. The CLI and OpenClaw plugin disable the library dollar cap and refuse x402 assets outside the upstream defaults and Solana mainnet USDC.
+- The OpenClaw plugin now depends on `@solana/kit ^8.6.0`, `mppx ^0.22.0`, and `viem ^2.58.6`.
+
 ## [0.12.3] - 2026-08-14
 
 ### Fixed
@@ -526,7 +548,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `appendHistory` / `readHistory` / `calcSpend` - JSONL transaction history
 - Re-exports from `@x402/fetch`, `@x402/svm`, `@x402/evm`
 
-[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.3...HEAD
+[Unreleased]: https://github.com/cascade-protocol/x402-proxy/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.3...v0.13.0
 [0.12.3]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.2...v0.12.3
 [0.12.2]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.1...v0.12.2
 [0.12.1]: https://github.com/cascade-protocol/x402-proxy/compare/v0.12.0...v0.12.1
