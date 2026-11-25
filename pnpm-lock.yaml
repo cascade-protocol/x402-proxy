@@ -33,8 +33,8 @@ importers:
         specifier: ^0.10.1
         version: 0.10.1
       '@modelcontextprotocol/sdk':
-        specifier: ~1.27.1
-        version: 1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7)
+        specifier: ~1.32.2
+        version: 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@noble/curves':
         specifier: ^2.0.1
         version: 2.0.1
@@ -82,7 +82,7 @@ importers:
         version: 6.16.0
       mppx:
         specifier: ^0.22.0
-        version: 0.22.0(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6)
+        version: 0.22.0(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6)
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
@@ -876,16 +876,6 @@ packages:
 
   '@mistralai/mistralai@1.14.1':
     resolution: {integrity: sha512-IiLmmZFCCTReQgPAT33r7KQ1nYo5JPdvGkrkZqA8qQ2qB1GHgs5LoP5K2ICyrjnpw2n8oSxMM/VP+liiKcGNlQ==}
-
-  '@modelcontextprotocol/sdk@1.27.1':
-    resolution: {integrity: sha512-sr6GbP+4edBwFndLbM60gf07z0FQ79gaExpnsjMGePXqFcSSb7t6iscpjk9DhFhwd+mTEQrzNafGP8/iGGFYaA==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@cfworker/json-schema': ^4.1.1
-      zod: ^3.25 || ^4.0
-    peerDependenciesMeta:
-      '@cfworker/json-schema':
-        optional: true
 
   '@modelcontextprotocol/sdk@1.29.0':
     resolution: {integrity: sha512-zo37mZA9hJWpULgkRpowewez1y6ML5GsXJPY8FI0tBBCd77HEvza4jDqRKOXgHNn867PVGCyTdzqpz0izu5ZjQ==}
@@ -4793,30 +4783,6 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7)':
-    dependencies:
-      '@hono/node-server': 1.19.11(hono@4.13.2)
-      ajv: 8.18.0
-      ajv-formats: 3.0.1(ajv@8.18.0)
-      content-type: 1.0.5
-      cors: 2.8.6
-      cross-spawn: 7.0.6
-      eventsource: 3.0.7
-      eventsource-parser: 3.0.6
-      express: 5.2.1
-      express-rate-limit: 8.3.1(express@5.2.1)
-      hono: 4.13.2
-      jose: 6.2.2
-      json-schema-typed: 8.0.2
-      pkce-challenge: 5.0.1
-      raw-body: 3.0.2
-      zod: 4.6.7
-      zod-to-json-schema: 3.25.1(zod@4.6.7)
-    optionalDependencies:
-      '@cfworker/json-schema': 4.1.1
-    transitivePeerDependencies:
-      - supports-color
-
   '@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.3.6)':
     dependencies:
       '@hono/node-server': 1.19.11(hono@4.13.2)
@@ -7025,14 +6991,14 @@ snapshots:
     dependencies:
       minipass: 7.1.3
 
-  mppx@0.22.0(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6):
+  mppx@0.22.0(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6):
     dependencies:
       ox: 0.14.65(typescript@5.9.3)(zod@4.6.7)
       structured-headers: 2.1.0
       viem: 2.58.6(mppx@0.22.0)(typescript@5.9.3)(zod@4.6.7)
       zod: 4.6.7
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7)
+      '@modelcontextprotocol/sdk': 1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7)
       '@x402/core': 2.32.0
       '@x402/evm': 2.32.0(mppx@0.22.0)(typescript@5.9.3)
       '@x402/mcp': 2.32.0(@cfworker/json-schema@4.1.1)
@@ -7890,7 +7856,7 @@ snapshots:
       ox: 0.14.67(typescript@5.9.3)(zod@4.6.7)
       ws: 8.21.0
     optionalDependencies:
-      mppx: 0.22.0(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6)
+      mppx: 0.22.0(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6)
       typescript: 5.9.3
     transitivePeerDependencies:
       - bufferutil
