@@ -6,6 +6,7 @@ import {
   createTransactionMessage,
   getBase64EncodedWireTransaction,
   isSolanaError,
+  type MainnetUrl,
   mainnet,
   partiallySignTransactionMessageWithSigners,
   pipe,
@@ -23,7 +24,7 @@ import {
 } from "@solana-program/token";
 import type { PaymentRequirements, SchemeNetworkClient } from "@x402/core/types";
 
-import { resolveTransactionVersion } from "@x402/svm";
+import { resolveBlockhash, resolveTransactionVersion } from "@x402/svm";
 
 const MEMO_PROGRAM_ADDRESS: Address = "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr" as Address;
 const COMPUTE_BUDGET_PROGRAM: Address = "ComputeBudget111111111111111111111111111111" as Address;
@@ -56,15 +57,14 @@ const MAINNET_RPC_URLS = [
   "https://public.rpc.solanavibestation.com",
 ];
 
-type Transport = ReturnType<typeof createDefaultRpcTransport>;
-
 /**
  * Create a failover transport that tries each RPC in order.
  * On 429 from one endpoint, immediately tries the next instead of waiting.
  * Each transport gets its own coalescing via createDefaultRpcTransport.
  */
-function createFailoverTransport(urls: string[]) {
+function createFailoverTransport(urls: MainnetUrl[]) {
   const transports = urls.map((url) => createDefaultRpcTransport({ url }));
+  type Transport = (typeof transports)[number];
   const failover: Transport = (async (config) => {
     let lastError: unknown;
     for (const transport of transports) {
@@ -148,18 +148,15 @@ export class OptimizedSvmScheme implements SchemeNetworkClient {
       throw new Error("feePayer is required in paymentRequirements.extra for SVM transactions");
     }
 
-    const { value: latestBlockhash } = await rpc.getLatestBlockhash().send();
-
-    const nonce = crypto.getRandomValues(new Uint8Array(16));
-    const memoIx = {
-      programAddress: MEMO_PROGRAM_ADDRESS,
-      accounts: [] as const,
-      data: new TextEncoder().encode(
-        Array.from(nonce)
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join(""),
-      ),
-    };
+    const sellerMemo = paymentRequirements.extra?.memo;
+    const memo =
+      typeof sellerMemo === "string"
+        ? sellerMemo
+        : Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
+    const data = new TextEncoder().encode(memo);
+    if (data.byteLength > 256) throw new Error("extra.memo exceeds the maximum of 256 bytes");
+    const memoIx = { programAddress: MEMO_PROGRAM_ADDRESS, accounts: [] as const, data };
+    const latestBlockhash = await resolveBlockhash(rpc, paymentRequirements);
 
     const tx = pipe(
       createTransactionMessage({ version: 0 }),

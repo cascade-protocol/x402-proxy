@@ -1,7 +1,11 @@
 import { base58 } from "@scure/base";
-import { generateKeyPairSigner } from "@solana/kit";
+import {
+  generateKeyPairSigner,
+  getCompiledTransactionMessageDecoder,
+  getTransactionDecoder,
+} from "@solana/kit";
 import type { PaymentRequirements } from "@x402/fetch";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { deriveSolanaKeypair } from "./derive.js";
 import { OptimizedSvmScheme } from "./optimized-svm-scheme.js";
 import {
@@ -67,6 +71,89 @@ describe("configured Solana spend limits", () => {
 });
 
 describe("OptimizedSvmScheme", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const rpcBlockhash = "11111111111111111111111111111111";
+  const hintedBlockhash = "So11111111111111111111111111111111111111112";
+
+  async function buildTransaction(extra: Record<string, unknown>) {
+    const rpc = vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const { method, id } = (await new Request(input, init).json()) as {
+        method: string;
+        id: string;
+      };
+      expect(method).toBe("getLatestBlockhash");
+      return Response.json({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          context: { slot: 1 },
+          value: { blockhash: rpcBlockhash, lastValidBlockHeight: 10 },
+        },
+      });
+    });
+    vi.stubGlobal("fetch", rpc);
+    const [signer, payee, feePayer] = await Promise.all([
+      generateKeyPairSigner(),
+      generateKeyPairSigner(),
+      generateKeyPairSigner(),
+    ]);
+    const scheme = new OptimizedSvmScheme(signer);
+    const { payload } = await scheme.createPaymentPayload(2, {
+      ...solanaReq,
+      asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      payTo: payee.address,
+      extra: { feePayer: feePayer.address, ...extra },
+    });
+    const tx = getTransactionDecoder().decode(Buffer.from(payload.transaction, "base64"));
+    const message = getCompiledTransactionMessageDecoder().decode(tx.messageBytes);
+    if (message.version !== 0) throw new Error("Expected a v0 transaction");
+    const instructions = message.instructions.map((ix) => ({
+      program: message.staticAccounts[ix.programAddressIndex],
+      data: Buffer.from(ix.data ?? []),
+    }));
+    return { message, instructions, rpc };
+  }
+
+  it("preserves the v0 transfer layout and random nonce without seller hints", async () => {
+    const { message, instructions, rpc } = await buildTransaction({});
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(message.lifetimeToken).toBe(rpcBlockhash);
+    expect(message.staticAccounts).toHaveLength(8);
+    expect(instructions.map((ix) => ix.program)).toEqual([
+      "ComputeBudget111111111111111111111111111111",
+      "ComputeBudget111111111111111111111111111111",
+      "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+      "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+    ]);
+    expect(instructions.slice(0, 3).map((ix) => ix.data.toString("hex"))).toEqual([
+      "02204e0000",
+      "030100000000000000",
+      "0ca08601000000000006",
+    ]);
+    expect(instructions[3].data.toString()).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("uses the seller blockhash without contacting RPC", async () => {
+    const { rpc, message } = await buildTransaction({
+      recentBlockhash: hintedBlockhash,
+      lastValidBlockHeight: 99,
+    });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(message.lifetimeToken).toBe(hintedBlockhash);
+  });
+
+  it.each(["", "\u00e9".repeat(128)])("encodes the supplied memo exactly", async (memo) => {
+    const { instructions } = await buildTransaction({ memo });
+    expect(instructions[3].data).toEqual(Buffer.from(memo));
+  });
+
+  it("rejects a seller memo larger than 256 UTF-8 bytes", async () => {
+    await expect(buildTransaction({ memo: `${"\u00e9".repeat(128)}a` })).rejects.toThrow(
+      /memo.*256 bytes/,
+    );
+  });
+
   it.each([
     { versions: [] },
     { versions: [1] },

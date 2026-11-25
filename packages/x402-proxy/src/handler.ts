@@ -173,6 +173,29 @@ export function splitSseFrames(buffer: string): { frames: string[]; rest: string
   return { frames: parts.filter((part) => part.trim()), rest };
 }
 
+async function responseBodyPreview(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let remaining = 200;
+  let text = "";
+  try {
+    while (remaining > 0) {
+      const { done, value } = await reader.read();
+      if (done) return text + decoder.decode();
+      const prefix = value.subarray(0, remaining);
+      text += decoder.decode(prefix, { stream: true });
+      remaining -= prefix.byteLength;
+    }
+    void reader.cancel().catch(() => {});
+  } catch {
+    // Keep any provider detail received before the read failed.
+  } finally {
+    reader.releaseLock();
+  }
+  return text;
+}
+
 // --- MPP handler ---
 
 /**
@@ -334,7 +357,12 @@ export async function createMppProxyHandler(opts: {
       headers.set("X-Payer-Address", payerAddress);
       const prepared = await sessionMppx.prepareRequest(url, { ...init, headers });
       const response = prepared.payment ? await prepared.payment.pay() : prepared.response;
-      if (!response.ok) throw new Error(`MPP SSE request failed with status ${response.status}`);
+      if (!response.ok) {
+        const body = await responseBodyPreview(response);
+        throw new Error(
+          `MPP SSE request failed with status ${response.status}${body ? `: ${body}` : ""}`,
+        );
+      }
 
       async function postManagement(
         action: "voucher" | "close",
@@ -417,9 +445,9 @@ export async function createMppProxyHandler(opts: {
                     throw new Error("MPP voucher exceeds channel deposit");
                   const voucherResponse = await postManagement("voucher", target, init?.signal);
                   if (!voucherResponse.ok) {
-                    const body = await voucherResponse.text().catch(() => "");
+                    const body = await responseBodyPreview(voucherResponse);
                     throw new Error(
-                      `Voucher POST failed with status ${voucherResponse.status}${body ? `: ${body.slice(0, 200)}` : ""}`,
+                      `Voucher POST failed with status ${voucherResponse.status}${body ? `: ${body}` : ""}`,
                     );
                   }
                   const receiptHeader = voucherResponse.headers.get("Payment-Receipt");

@@ -1,89 +1,67 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Challenge, Credential } from "mppx";
 import { Session } from "mppx/tempo";
-import { zeroAddress, zeroHash } from "viem";
-import { generatePrivateKey } from "viem/accounts";
+import type { Hex } from "viem";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { afterEach, expect, it, vi } from "vitest";
 import { createMppProxyHandler } from "./handler.js";
-
-vi.mock("./lib/config.js", () => ({ saveSession: vi.fn(), clearSession: vi.fn() }));
-
-// Exercise mppx's real challenge selection, credential caching and HTTP transport with an offline signer.
-vi.mock("mppx/client", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("mppx/client")>();
-  return {
-    ...actual,
-    tempo(options: Parameters<typeof actual.tempo>[0]) {
-      const [charge, session] = actual.tempo(options);
-      return [
-        charge,
-        {
-          ...session,
-          canHandleChallenge: () => true,
-          async createCredential({
-            challenge,
-            context,
-          }: Parameters<typeof session.createCredential>[0]) {
-            const descriptor = {
-              payer: zeroAddress,
-              payee: zeroAddress,
-              operator: zeroAddress,
-              token: zeroAddress,
-              salt: zeroHash,
-              authorizedSigner: zeroAddress,
-              expiringNonceHash: zeroHash,
-            };
-            if (!context?.action) {
-              options?.onChannelUpdate?.({
-                channelId: zeroHash,
-                cumulativeAmount: 2n,
-                opened: true,
-                descriptor,
-                deposit: 6000n,
-                chainId: 4217,
-                escrow: zeroAddress,
-              });
-            } else {
-              expect(context.descriptor).toEqual(descriptor);
-            }
-            return Credential.serialize({
-              challenge,
-              payload: {
-                action: context?.action ?? "open",
-                amount: context?.cumulativeAmountRaw,
-              },
-            });
-          },
-        },
-      ];
-    },
-  };
-});
 
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
 
-it("posts distinct voucher and close credentials for the opening session", async () => {
+it("signs open, voucher and close credentials for the same session", async ({ onTestFinished }) => {
+  const configDir = mkdtempSync(join(tmpdir(), "x402-session-"));
+  onTestFinished(() => rmSync(configDir, { recursive: true, force: true }));
+  vi.stubEnv("XDG_CONFIG_HOME", configDir);
+  vi.stubEnv("X402_PROXY_MPP_VOUCHER_HEADROOM_USDC", "0.005");
+  const evmKey = generatePrivateKey();
+  const payer = privateKeyToAccount(evmKey).address;
   const url = "https://example.test/chat";
+  const chainId = 4217;
+  const escrow = Session.Precompile.Constants.tip20ChannelEscrow;
   const challenge = Challenge.from({
     id: "session-test",
     method: "tempo",
     intent: "session",
     realm: "example.test",
-    request: { amount: "2", currency: zeroAddress },
+    request: {
+      amount: "2",
+      suggestedDeposit: "6000",
+      currency: "0x20c0000000000000000000000000000000000000",
+      recipient: "0x0000000000000000000000000000000000000001",
+      methodDetails: { chainId, sessionProtocol: "v2" },
+    },
   });
-  const receipt = Session.Precompile.Receipt.createSessionReceipt({
-    channelId: zeroHash,
-    challengeId: challenge.id,
-    acceptedCumulative: 5002n,
-    spent: 2n,
-    units: 1,
-  });
-  const payloads: unknown[] = [];
-  vi.stubEnv("X402_PROXY_MPP_VOUCHER_HEADROOM_USDC", "0.005");
+  let opened: Hex | undefined;
+  const actions: [string, string][] = [];
   vi.stubGlobal("fetch", async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
     const req = new Request(input, init);
+    if (new URL(req.url).hostname === "rpc.tempo.xyz") {
+      const { method, id, params } = (await req.json()) as {
+        method: string;
+        id: number;
+        params: Record<string, unknown>[];
+      };
+      expect(["eth_fillTransaction", "eth_chainId"]).toContain(method);
+      const result =
+        method === "eth_chainId"
+          ? "0x1079"
+          : {
+              tx: {
+                ...params[0],
+                chainId: "0x1079",
+                gas: "0x20000",
+                maxFeePerGas: "0x2",
+                maxPriorityFeePerGas: "0x1",
+              },
+            };
+      return Response.json({ jsonrpc: "2.0", id, result });
+    }
+    expect(req.url).toBe(url);
     const auth = req.headers.get("Authorization");
     if (!auth) {
       const response = new Response(null, {
@@ -93,16 +71,33 @@ it("posts distinct voucher and close credentials for the opening session", async
       Object.defineProperty(response, "url", { value: url });
       return response;
     }
-    const { payload } = Credential.deserialize<{ action: string; amount?: string }>(auth);
-    payloads.push(payload);
+    const credential = Credential.deserialize<Session.Precompile.SessionCredentialPayload>(auth);
+    const payload = credential.payload;
+    if (payload.action === "topUp") throw new Error("Unexpected top-up");
+    expect(credential.challenge.id).toBe(challenge.id);
+    const { channelId, signature, cumulativeAmount } = payload;
+    const voucher = { channelId, signature, cumulativeAmount: BigInt(cumulativeAmount) };
+    expect(Session.Precompile.Voucher.verifyVoucher(escrow, chainId, voucher, payer)).toBe(true);
+    actions.push([payload.action, cumulativeAmount]);
+    const receipt = Session.Precompile.Receipt.createSessionReceipt({
+      channelId,
+      challengeId: challenge.id,
+      acceptedCumulative: payload.action === "close" ? 4n : 5004n,
+      spent: 4n,
+      units: 2,
+    });
     if (payload.action === "open") {
+      opened = channelId;
+      expect(Session.Precompile.Channel.computeId({ ...payload.descriptor, chainId, escrow })).toBe(
+        channelId,
+      );
       expect(await req.text()).toBe("chat");
       const wire = Session.Precompile.SseProtocol;
       return new Response(
         wire.formatNeedVoucherEvent({
-          channelId: zeroHash,
-          requiredCumulative: "2",
-          acceptedCumulative: "0",
+          channelId,
+          requiredCumulative: "4",
+          acceptedCumulative: "2",
           deposit: "6000",
         }) +
           wire.formatReceiptEvent(receipt) +
@@ -110,24 +105,46 @@ it("posts distinct voucher and close credentials for the opening session", async
         { headers: { "Content-Type": "text/event-stream" } },
       );
     }
-    expect(req.url).toBe(url);
+    expect(channelId).toBe(opened);
     expect(req.method).toBe("POST");
     expect(req.body).toBeNull();
+    if (payload.action === "close") {
+      expect(
+        Session.Precompile.Voucher.verifyCloseAuthorization(
+          escrow,
+          chainId,
+          {
+            ...voucher,
+            signature: payload.closeSignature,
+          },
+          [payer],
+        ),
+      ).toBe(true);
+    }
     return new Response(null, {
       headers: { "Payment-Receipt": Session.Precompile.Receipt.serializeSessionReceipt(receipt) },
     });
   });
-  const handler = await createMppProxyHandler({ evmKey: generatePrivateKey() });
+  const handler = await createMppProxyHandler({ evmKey });
   const output = [];
   for await (const message of await handler.sse(url, { method: "POST", body: "chat" }))
     output.push(message);
   await handler.close();
   expect(output).toEqual(["ok"]);
-  expect(payloads).toEqual([
-    { action: "open" },
-    { action: "voucher", amount: "5002" },
-    { action: "close", amount: "2" },
+  expect(actions).toEqual([
+    ["open", "2"],
+    ["voucher", "5004"],
+    ["close", "4"],
   ]);
   handler.shiftPayment();
-  expect(handler.shiftPayment()?.amount).toBe("0.000002");
+  expect(handler.shiftPayment()).toMatchObject({ amount: "0.000004", channelId: opened });
+});
+
+it("includes at most 200 UTF-8 bytes of the upstream stream error", async () => {
+  const prefix = "\u00e9".repeat(100);
+  vi.stubGlobal("fetch", async () => new Response(`${prefix}omitted`, { status: 503 }));
+  const handler = await createMppProxyHandler({ evmKey: generatePrivateKey() });
+  await expect(handler.sse("https://example.test/chat")).rejects.toEqual(
+    new Error(`MPP SSE request failed with status 503: ${prefix}`),
+  );
 });

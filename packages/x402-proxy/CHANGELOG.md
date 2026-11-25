@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `wallet` and `status` now show the Tempo USDC balance.
+- Streaming requests with `--protocol mpp` exit with status 1 on an upstream HTTP error and include the first 200 bytes of the provider's response in the error message.
+- Solana payments now honor the seller's recent blockhash hint and UTF-8 memo. Memos can be up to 256 bytes. Payments without a seller memo continue to use a random nonce.
+
+### Changed
+
+- For library users, the exported `x402Client` now accepts only default assets and caps each payment at $1 by default. Call `.setSpendControls(false)` to opt out. The CLI and OpenClaw plugin opt out of these library defaults.
+- The OpenClaw plugin now depends on `@solana/kit ^8.6.0`, `mppx ^0.22.0`, and `viem ^2.58.6`.
+
 ## [0.12.3] - 2026-08-14
 
 ### Fixed
