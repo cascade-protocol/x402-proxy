@@ -1,6 +1,7 @@
 declare const __VERSION__: string;
 
 import { buildCommand, type CommandContext } from "@stricli/core";
+import type { McpClient } from "mppx/mcp/client";
 import { challengeAmount, TEMPO_NETWORK } from "../handler.js";
 import {
   appendHistory,
@@ -105,7 +106,7 @@ export function createMppToolPayment(config: ProxyConfig | null, pending: Map<sy
         throw new Error("Invalid MPP payment amount");
       if (config?.spendLimitPerTx !== undefined && reservation > config.spendLimitPerTx)
         throw new Error(`Payment exceeds per-transaction limit of ${config.spendLimitPerTx} USDC`);
-      if (config?.spendLimitDaily !== undefined) {
+      if (reservation > 0 && config?.spendLimitDaily !== undefined) {
         const spent = calcSpend(readHistory(getHistoryPath())).today;
         const reserved = [...pending.values()].reduce((sum, value) => sum + value, 0);
         if (
@@ -122,6 +123,44 @@ export function createMppToolPayment(config: ProxyConfig | null, pending: Map<sy
       pending.delete(call);
     },
   };
+}
+
+export async function callMppTool(
+  mppClient: Pick<McpClient.wrap.McpClient, "callTool">,
+  params: { name: string; arguments: Record<string, unknown> },
+  config: ProxyConfig | null,
+  pendingPayments: Map<symbol, number>,
+  from: string,
+) {
+  const payment = createMppToolPayment(config, pendingPayments);
+  try {
+    const result = await mppClient.callTool(params, undefined, {
+      onPaymentRequired: payment.approve,
+    });
+    const amount = payment.amount;
+    if (amount !== undefined || result.receipt) {
+      const record: TxRecord = {
+        t: Date.now(),
+        ok: true,
+        kind: "mpp_payment",
+        net: TEMPO_NETWORK,
+        from,
+        tx: result.receipt?.reference,
+        amount,
+        token: "USDC",
+        label: `mcp:${params.name}`,
+      };
+      appendHistory(getHistoryPath(), record);
+      const amountStr = amount !== undefined ? formatAmount(amount, "USDC") : "";
+      warn(
+        `  MPP payment for tool "${params.name}" (Tempo)${amountStr ? ` \u00b7 ${amountStr}` : ""}`,
+      );
+    }
+
+    return normalizeCallToolResult(result as CallToolResultLike);
+  } finally {
+    payment.release();
+  }
 }
 
 export function cloneTool(tool: ToolDefinition): ToolDefinition {
@@ -561,35 +600,13 @@ Wallet is auto-generated on first run. No env vars needed.`,
       const pendingPayments = new Map<symbol, number>();
       localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
-        const payment = createMppToolPayment(config, pendingPayments);
-        try {
-          const result = await mppClient.callTool({ name, arguments: args ?? {} }, undefined, {
-            onPaymentRequired: payment.approve,
-          });
-          const amount = payment.amount;
-          if (result.receipt) {
-            const record: TxRecord = {
-              t: Date.now(),
-              ok: true,
-              kind: "mpp_payment",
-              net: TEMPO_NETWORK,
-              from: wallet.evmAddress ?? "unknown",
-              tx: result.receipt.reference,
-              amount,
-              token: "USDC",
-              label: `mcp:${name}`,
-            };
-            appendHistory(getHistoryPath(), record);
-            const amountStr = amount !== undefined ? formatAmount(amount, "USDC") : "";
-            warn(
-              `  MPP payment for tool "${name}" (Tempo)${amountStr ? ` \u00b7 ${amountStr}` : ""}`,
-            );
-          }
-
-          return normalizeCallToolResult(result as CallToolResultLike);
-        } finally {
-          payment.release();
-        }
+        return callMppTool(
+          mppClient,
+          { name, arguments: args ?? {} },
+          config,
+          pendingPayments,
+          wallet.evmAddress ?? "unknown",
+        );
       });
 
       if (remoteResources.length > 0) {

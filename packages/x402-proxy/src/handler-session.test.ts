@@ -13,15 +13,20 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-it.each([
-  "ordinary stream",
-  "503 after open",
-  "expired challenge",
-  "inflated receipt",
-  "expired close",
-  "two channels with a failed close",
-  "close timeout",
-])("settles a signed session with %s", async (scenario) => {
+function challengeResponse(...offers: Challenge.Challenge[]) {
+  return new Response(null, {
+    status: 402,
+    headers: { "WWW-Authenticate": offers.map(Challenge.serialize).join(", ") },
+  });
+}
+
+function stubSessionServer(
+  scenario = "ordinary stream",
+  hooks: {
+    refresh?: (offer: Challenge.Challenge) => Response;
+    management?: (action: "close" | "voucher", offer: Challenge.Challenge) => Response | undefined;
+  } = {},
+) {
   const configDir = mkdtempSync(join(tmpdir(), "x402-session-"));
   onTestFinished(() => rmSync(configDir, { recursive: true, force: true }));
   vi.stubEnv("XDG_CONFIG_HOME", configDir);
@@ -46,7 +51,14 @@ it.each([
       methodDetails: { chainId, sessionProtocol: "v2" },
     },
   });
-  let refreshed = false;
+  const renewed = () => ({
+    ...challenge,
+    id: "renewed",
+    header: "Payment-Authorization" as const,
+    expires: new Date(Date.now() + 300_000).toISOString(),
+  });
+  let probes = 0;
+  const challengeIds: string[] = [];
   const channels = new Set<Hex>();
   const closeStarted = Promise.withResolvers<AbortSignal>();
   let opened: Hex | undefined;
@@ -81,28 +93,20 @@ it.each([
         expect(req.method).toBe("POST");
         expect(req.body).toBeNull();
         expect(req.headers.get("Payment-Session")).toBe(opened);
-        refreshed = true;
+        expect(req.redirect).toBe("manual");
+        probes++;
+        return hooks.refresh?.(renewed()) ?? challengeResponse(renewed());
       }
-      const offer = refreshed
-        ? {
-            ...challenge,
-            id: "renewed",
-            header: "Payment-Authorization" as const,
-            expires: new Date(Date.now() + 300_000).toISOString(),
-          }
-        : challenge;
-      const response = new Response(null, {
-        status: 402,
-        headers: { "WWW-Authenticate": Challenge.serialize(offer) },
-      });
+      const response = challengeResponse(challenge);
       Object.defineProperty(response, "url", { value: url });
       return response;
     }
     const credential = Credential.deserialize<Session.Precompile.SessionCredentialPayload>(auth);
-    if (refreshed) expect(req.headers.has("Payment-Authorization")).toBe(true);
+    if (credential.challenge.id === "renewed")
+      expect(req.headers.has("Payment-Authorization")).toBe(true);
     const payload = credential.payload;
     if (payload.action === "topUp") throw new Error("Unexpected top-up");
-    expect(credential.challenge.id).toBe(refreshed ? "renewed" : challenge.id);
+    challengeIds.push(credential.challenge.id);
     const { channelId, signature, cumulativeAmount } = payload;
     const voucher = { channelId, signature, cumulativeAmount: BigInt(cumulativeAmount) };
     expect(Session.Precompile.Voucher.verifyVoucher(escrow, chainId, voucher, payer)).toBe(true);
@@ -157,6 +161,9 @@ it.each([
         ),
       ).toBe(true);
     }
+    expect(req.redirect).toBe("manual");
+    const rejection = hooks.management?.(payload.action, renewed());
+    if (rejection) return rejection;
     if (
       payload.action === "close" &&
       scenario === "two channels with a failed close" &&
@@ -171,6 +178,35 @@ it.each([
       headers: { "Payment-Receipt": Session.Precompile.Receipt.serializeSessionReceipt(receipt) },
     });
   });
+  return {
+    evmKey,
+    url,
+    expires,
+    configDir,
+    actions,
+    channels,
+    closeStarted,
+    challengeIds,
+    get opened() {
+      return opened;
+    },
+    get probes() {
+      return probes;
+    },
+  };
+}
+
+it.each([
+  "ordinary stream",
+  "503 after open",
+  "expired challenge",
+  "inflated receipt",
+  "expired close",
+  "two channels with a failed close",
+  "close timeout",
+])("settles a signed session with %s", async (scenario) => {
+  const server = stubSessionServer(scenario);
+  const { evmKey, url, expires, configDir, actions, channels, closeStarted } = server;
   const handler = await createMppProxyHandler({ evmKey });
   const stream = handler.sse(url, { method: "POST", body: "chat" });
   if (scenario === "503 after open") {
@@ -193,7 +229,7 @@ it.each([
     expect(actions.filter(([action]) => action === "close")).toHaveLength(2);
     expect(handler.shiftPayment()?.intent).toBe("session");
     expect(handler.shiftPayment()?.intent).toBe("session");
-    expect(handler.shiftPayment()?.channelId).toBe(opened);
+    expect(handler.shiftPayment()?.channelId).toBe(server.opened);
     return;
   }
   if (scenario === "close timeout") {
@@ -221,9 +257,167 @@ it.each([
     ["voucher", "5004"],
     ["close", scenario === "inflated receipt" ? "5004" : "4"],
   ]);
-  expect(refreshed).toBe(scenario === "expired challenge" || scenario === "expired close");
+  const refreshed = scenario === "expired challenge" || scenario === "expired close";
+  expect(server.probes).toBe(refreshed ? 1 : 0);
+  expect(server.challengeIds).toEqual([
+    "session-test",
+    scenario === "expired challenge" ? "renewed" : "session-test",
+    refreshed ? "renewed" : "session-test",
+  ]);
   expect(handler.shiftPayment()).toMatchObject({ protocol: "mpp", intent: "session" });
-  expect(handler.shiftPayment()).toMatchObject({ amount: "0.000004", channelId: opened });
+  expect(handler.shiftPayment()).toMatchObject({ amount: "0.000004", channelId: server.opened });
+});
+
+async function consumeSession(server: ReturnType<typeof stubSessionServer>) {
+  const handler = await createMppProxyHandler({ evmKey: server.evmKey });
+  const messages = [];
+  for await (const message of await handler.sse(server.url, { method: "POST", body: "chat" }))
+    messages.push(message);
+  expect(messages).toEqual(["ok"]);
+  return handler;
+}
+
+function managementOffers(offer: Challenge.Challenge) {
+  return challengeResponse(
+    {
+      ...offer,
+      id: "wrong-recipient",
+      request: { ...offer.request, recipient: "0x0000000000000000000000000000000000000002" },
+    },
+    {
+      ...offer,
+      id: "wrong-currency",
+      request: { ...offer.request, currency: "0x0000000000000000000000000000000000000003" },
+    },
+    {
+      ...offer,
+      request: { ...offer.request, currency: "0x20C0000000000000000000000000000000000000" },
+    },
+  );
+}
+
+it.each([
+  "voucher",
+  "close",
+] as const)("retries a rejected %s once using the 402 offers", async (action) => {
+  let rejected = false;
+  const server = stubSessionServer("inflated receipt", {
+    management(post, offer) {
+      if (post !== action || rejected) return;
+      rejected = true;
+      return managementOffers(offer);
+    },
+  });
+  const handler = await consumeSession(server);
+  await handler.close();
+  expect(server.probes).toBe(0);
+  expect(server.actions).toEqual([
+    ["open", "2"],
+    ["voucher", "5004"],
+    [action, "5004"],
+    ["close", "5004"],
+  ]);
+  expect(server.challengeIds).toEqual([
+    "session-test",
+    "session-test",
+    action === "close" ? "session-test" : "renewed",
+    "renewed",
+  ]);
+  expect(handler.shiftPayment()?.intent).toBe("session");
+  expect(handler.shiftPayment()?.channelId).toBe(server.opened);
+});
+
+it("probes within 30 seconds of expiry and selects the matching recipient and currency", async () => {
+  const server = stubSessionServer("ordinary stream", {
+    refresh: managementOffers,
+  });
+  const handler = await consumeSession(server);
+  vi.spyOn(Date, "now").mockReturnValue(Date.parse(server.expires) - 30_000);
+  onTestFinished(() => {
+    vi.restoreAllMocks();
+  });
+  await handler.close();
+  expect(server.probes).toBe(1);
+  expect(server.challengeIds).toEqual(["session-test", "session-test", "renewed"]);
+});
+
+it.each([
+  ["probe", "foreign realm"],
+  ["402", "foreign realm"],
+  ["probe", "foreign channel"],
+  ["402", "foreign channel"],
+  ["402", "foreign snapshot"],
+  ["402", "near expiry"],
+  ["probe", "wrong recipient"],
+  ["probe", "wrong currency"],
+  ["probe", "non-402"],
+  ["402", "second 402"],
+] as const)("refuses a %s with %s during close", async (source, problem) => {
+  vi.stubEnv("X402_PROXY_DEBUG", "1");
+  const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+  onTestFinished(() => {
+    vi.restoreAllMocks();
+  });
+  function replacement(offer: Challenge.Challenge) {
+    switch (problem) {
+      case "non-402":
+        return new Response(null, { status: 503 });
+      case "foreign realm":
+        return challengeResponse({ ...offer, realm: "elsewhere.test" });
+      case "near expiry":
+        return challengeResponse({ ...offer, expires: new Date(Date.now() + 5_000).toISOString() });
+      case "foreign snapshot":
+      case "foreign channel":
+        return challengeResponse({
+          ...offer,
+          request: {
+            ...offer.request,
+            methodDetails: {
+              chainId: 4217,
+              sessionProtocol: "v2",
+              ...(problem === "foreign channel"
+                ? { channelId: `0x${"ff".repeat(32)}` }
+                : { sessionSnapshot: { channelId: `0x${"ff".repeat(32)}` } }),
+            },
+          },
+        });
+      case "wrong recipient":
+      case "wrong currency":
+        return challengeResponse({
+          ...offer,
+          request: {
+            ...offer.request,
+            [problem === "wrong currency" ? "currency" : "recipient"]:
+              "0x0000000000000000000000000000000000000002",
+          },
+        });
+      case "second 402":
+        return challengeResponse(offer);
+    }
+  }
+  const server = stubSessionServer("ordinary stream", {
+    refresh: replacement,
+    management: (post, offer) =>
+      source === "402" && post === "close" ? replacement(offer) : undefined,
+  });
+  const handler = await consumeSession(server);
+  if (source === "probe") vi.spyOn(Date, "now").mockReturnValue(Date.parse(server.expires));
+  await handler.close();
+  expect(server.probes).toBe(source === "probe" ? 1 : 0);
+  const closeIds =
+    source === "probe"
+      ? []
+      : problem === "second 402"
+        ? ["session-test", "renewed"]
+        : ["session-test"];
+  expect(server.challengeIds).toEqual(["session-test", "session-test", ...closeIds]);
+  const error =
+    problem === "non-402"
+      ? "refresh returned HTTP 503"
+      : problem === "second 402"
+        ? "Close POST failed with status 402"
+        : "No matching unexpired Tempo session challenge";
+  expect(stderr).toHaveBeenCalledWith(expect.stringContaining(error));
 });
 
 it("includes at most 200 UTF-8 bytes of the upstream stream error", async () => {

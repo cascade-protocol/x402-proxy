@@ -176,6 +176,33 @@ export function splitSseFrames(buffer: string): { frames: string[]; rest: string
 
 const PROVIDER_ERROR_PREVIEW_BYTES = 200;
 const SESSION_CLOSE_TIMEOUT_MS = 5_000;
+const SESSION_EXPIRY_MARGIN_MS = 30_000;
+
+function validForManagement(expires?: string): boolean {
+  return expires === undefined || Date.parse(expires) > Date.now() + SESSION_EXPIRY_MARGIN_MS;
+}
+
+function sameHex(value: unknown, expected: string): boolean {
+  return typeof value === "string" && value.toLowerCase() === expected.toLowerCase();
+}
+
+function matchesSessionChannel(request: Record<string, unknown>, channel: ChannelEntry): boolean {
+  const details = request.methodDetails as
+    | {
+        chainId?: unknown;
+        channelId?: unknown;
+        sessionSnapshot?: { channelId?: unknown };
+      }
+    | undefined;
+  return (
+    sameHex(request.recipient, channel.descriptor.payee) &&
+    sameHex(request.currency, channel.descriptor.token) &&
+    (details?.chainId === undefined || details.chainId === channel.chainId) &&
+    (details?.channelId === undefined || sameHex(details.channelId, channel.channelId)) &&
+    (details?.sessionSnapshot === undefined ||
+      sameHex(details.sessionSnapshot?.channelId, channel.channelId))
+  );
+}
 
 async function responseBodyPreview(response: Response): Promise<string> {
   const reader = response.body?.getReader();
@@ -350,8 +377,8 @@ export async function createMppProxyHandler(opts: {
       headers.set("Accept", "text/event-stream");
       const prepared = await sessionMppx.prepareRequest(url, { ...init, headers });
       const managementUrl = prepared.request.url;
-      let challengeId = prepared.payment?.challenge.id;
-      let expires = prepared.payment?.challenge.expires;
+      const hostname = new URL(managementUrl).hostname.toLowerCase();
+      let currentChallenge = prepared.payment?.challenge;
       let challengeResponse =
         prepared.payment && new Response(null, { status: 402, headers: prepared.response.headers });
 
@@ -361,10 +388,56 @@ export async function createMppProxyHandler(opts: {
         signal?: AbortSignal | null,
       ) {
         const channel = session.channel;
-        if (!channel || !challengeResponse) throw new Error("MPP session channel is unavailable");
-        const expired = expires !== undefined && Date.parse(expires) <= Date.now();
-        let response = challengeResponse;
-        if (expired) {
+        if (!channel || !currentChallenge || !challengeResponse)
+          throw new Error("MPP session channel is unavailable");
+
+        const postCredential = async (response: Response, expectedId?: string) => {
+          const payment = await sessionMppx.preparePayment(response, {
+            orderChallenges(offers) {
+              const matching = offers.filter(
+                ({ challenge }) =>
+                  challenge.method === "tempo" &&
+                  challenge.intent === "session" &&
+                  challenge.realm.toLowerCase() === hostname &&
+                  (expectedId === undefined
+                    ? validForManagement(challenge.expires)
+                    : challenge.id === expectedId) &&
+                  matchesSessionChannel(challenge.request, channel),
+              );
+              if (!matching.length)
+                throw new Error(
+                  "No matching unexpired Tempo session challenge for this channel and host",
+                );
+              return matching;
+            },
+          });
+          signal?.throwIfAborted();
+          const credential = await payment.createCredential({
+            action,
+            channelId: channel.channelId,
+            descriptor: channel.descriptor,
+            cumulativeAmountRaw: amount.toString(),
+          });
+          signal?.throwIfAborted();
+          challengeResponse = response;
+          currentChallenge = payment.challenge;
+          return sessionMppx.rawFetch(
+            managementUrl,
+            payment.setCredential(
+              {
+                method: "POST",
+                redirect: "manual",
+                signal,
+                headers: { "X-Payer-Address": payerAddress },
+              },
+              credential,
+            ),
+          );
+        };
+
+        let offer = challengeResponse;
+        let expectedId: string | undefined = currentChallenge.id;
+        if (!validForManagement(currentChallenge.expires)) {
           const probe = await sessionMppx.rawFetch(managementUrl, {
             method: "POST",
             redirect: "manual",
@@ -378,47 +451,14 @@ export async function createMppProxyHandler(opts: {
           void probe.body?.cancel().catch(() => {});
           if (probe.status !== 402)
             throw new Error(`Expired MPP session challenge: refresh returned HTTP ${probe.status}`);
-          response = new Response(null, { status: 402, headers: probe.headers });
+          offer = new Response(null, { status: 402, headers: probe.headers });
+          expectedId = undefined;
         }
-        const payment = await sessionMppx.preparePayment(response, {
-          orderChallenges(offers) {
-            const matching = offers.filter(
-              ({ challenge }) =>
-                challenge.method === "tempo" &&
-                challenge.intent === "session" &&
-                challenge.realm.toLowerCase() === new URL(managementUrl).hostname.toLowerCase() &&
-                (expired
-                  ? !challenge.expires || Date.parse(challenge.expires) > Date.now()
-                  : challenge.id === challengeId),
-            );
-            if (!matching.length)
-              throw new Error("No matching unexpired Tempo session challenge for management");
-            return matching;
-          },
-        });
-        challengeResponse = response;
-        challengeId = payment.challenge.id;
-        expires = payment.challenge.expires;
-        signal?.throwIfAborted();
-        const credential = await payment.createCredential({
-          action,
-          channelId: channel.channelId,
-          descriptor: channel.descriptor,
-          cumulativeAmountRaw: amount.toString(),
-        });
-        signal?.throwIfAborted();
-        return sessionMppx.rawFetch(
-          managementUrl,
-          payment.setCredential(
-            {
-              method: "POST",
-              redirect: "manual",
-              signal,
-              headers: { "X-Payer-Address": payerAddress },
-            },
-            credential,
-          ),
-        );
+
+        const result = await postCredential(offer, expectedId);
+        if (result.status !== 402) return result;
+        void result.body?.cancel().catch(() => {});
+        return postCredential(new Response(null, { status: 402, headers: result.headers }));
       }
 
       const session: ActiveSession = {
