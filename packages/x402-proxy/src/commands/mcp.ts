@@ -1,6 +1,5 @@
 declare const __VERSION__: string;
 
-import { AsyncLocalStorage } from "node:async_hooks";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import { TEMPO_NETWORK } from "../handler.js";
 import { appendHistory, displayNetwork, formatAmount, type TxRecord } from "../history.js";
@@ -450,39 +449,21 @@ Wallet is auto-generated on first run. No env vars needed.`,
       }
 
       const { tempo } = await import("mppx/client");
-      const { McpClient } = await import("mppx/mcp-sdk/client");
+      const { McpClient } = await import("mppx/mcp/client");
       const { privateKeyToAccount } = await import("viem/accounts");
 
       const account = privateKeyToAccount(wallet.evmKey as `0x${string}`);
       const maxDeposit = config?.mppSessionBudget ?? "1";
-
-      // Per-call async context to capture payment amounts without races.
-      // Each concurrent callTool gets its own store via AsyncLocalStorage.
-      const challengeAmountStore = new AsyncLocalStorage<{ amount?: number }>();
-      const tempoMethods = tempo({ account, maxDeposit });
-      const wrappedMethods = tempoMethods.map((m) => ({
-        ...m,
-        createCredential: async (params: { challenge: { request: Record<string, unknown> } }) => {
-          const req = params.challenge.request as { amount?: string; decimals?: number };
-          const store = challengeAmountStore.getStore();
-          if (req.amount && store) {
-            store.amount = Number(req.amount) / 10 ** (req.decimals ?? 6);
-          }
-          return (m.createCredential as (p: unknown) => Promise<string>)(params);
-        },
-      }));
 
       // Connect base client to remote MCP server
       const remoteClient = new Client({ name: "x402-proxy", version: __VERSION__ });
 
       await connectTransport(remoteClient);
 
-      // McpClient expects Client resolved with zod@3 (via mppx's own SDK copy),
-      // but ours resolves with zod@4. Structurally identical.
-      const mppClient = McpClient.wrap(
-        remoteClient as unknown as Parameters<typeof McpClient.wrap>[0],
-        { methods: wrappedMethods as unknown as Parameters<typeof McpClient.wrap>[1]["methods"] },
-      );
+      const mppClient = McpClient.wrap(remoteClient, {
+        methods: [tempo({ account, maxDeposit })],
+        trustedTempoProofRealms: [new URL(remoteUrl).hostname],
+      });
 
       // Discover remote capabilities via base client
       let { tools } = await remoteClient.listTools();
@@ -518,32 +499,36 @@ Wallet is auto-generated on first run. No env vars needed.`,
 
       localServer.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { name, arguments: args } = request.params;
-        const store = { amount: undefined as number | undefined };
-        return challengeAmountStore.run(store, async () => {
-          const result = await mppClient.callTool({ name, arguments: args ?? {} });
-
-          // Record MPP payment if receipt present
-          if (result.receipt) {
-            const record: TxRecord = {
-              t: Date.now(),
-              ok: true,
-              kind: "mpp_payment",
-              net: TEMPO_NETWORK,
-              from: wallet.evmAddress ?? "unknown",
-              tx: result.receipt.reference,
-              amount: store.amount,
-              token: "USDC",
-              label: `mcp:${name}`,
-            };
-            appendHistory(getHistoryPath(), record);
-            const amountStr = store.amount !== undefined ? formatAmount(store.amount, "USDC") : "";
-            warn(
-              `  MPP payment for tool "${name}" (Tempo)${amountStr ? ` \u00b7 ${amountStr}` : ""}`,
-            );
-          }
-
-          return normalizeCallToolResult(result as CallToolResultLike);
+        let amount: number | undefined;
+        const result = await mppClient.callTool({ name, arguments: args ?? {} }, undefined, {
+          onPaymentRequired(challenge) {
+            const req = challenge.request as { amount?: string; decimals?: number };
+            if (req.amount) amount = Number(req.amount) / 10 ** (req.decimals ?? 6);
+            return true;
+          },
         });
+
+        // Record MPP payment if receipt present
+        if (result.receipt) {
+          const record: TxRecord = {
+            t: Date.now(),
+            ok: true,
+            kind: "mpp_payment",
+            net: TEMPO_NETWORK,
+            from: wallet.evmAddress ?? "unknown",
+            tx: result.receipt.reference,
+            amount,
+            token: "USDC",
+            label: `mcp:${name}`,
+          };
+          appendHistory(getHistoryPath(), record);
+          const amountStr = amount !== undefined ? formatAmount(amount, "USDC") : "";
+          warn(
+            `  MPP payment for tool "${name}" (Tempo)${amountStr ? ` \u00b7 ${amountStr}` : ""}`,
+          );
+        }
+
+        return normalizeCallToolResult(result as CallToolResultLike);
       });
 
       if (remoteResources.length > 0) {

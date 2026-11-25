@@ -218,12 +218,6 @@ export async function createMppProxyHandler(opts: {
     opened: boolean;
     close: () => Promise<SessionReceipt | undefined>;
   };
-  type CreateCredentialFn = (context?: Record<string, unknown>) => Promise<string>;
-  type ChannelEntry = {
-    channelId: string;
-    cumulativeAmount: bigint;
-    opened: boolean;
-  };
 
   const activeSessions = new Set<ActiveSession>();
   let persistedChannelId: string | undefined;
@@ -301,30 +295,18 @@ export async function createMppProxyHandler(opts: {
 
     async sse(input: string | URL, init?: RequestInit): Promise<AsyncIterable<string>> {
       const url = typeof input === "string" ? input : input.toString();
-      let createCredential: CreateCredentialFn | undefined;
+      let channel: Parameters<NonNullable<tempo.Parameters["onChannelUpdate"]>>[0] | undefined;
       let spent = 0n;
       const session: ActiveSession = {
-        channelId: undefined,
         cumulative: 0n,
         opened: false,
         async close() {
-          if (!session.opened || !session.channelId || !createCredential) return undefined;
-
-          const credential = await createCredential({
-            action: "close",
-            channelId: session.channelId,
-            cumulativeAmountRaw: spent.toString(),
-          });
-          const response = await mppx.rawFetch(url, {
-            method: "POST",
-            headers: { Authorization: credential, "X-Payer-Address": payerAddress },
-          });
+          if (!session.opened || !channel) return undefined;
+          const response = await postManagement("close", spent);
           const receiptHeader = response.headers.get("Payment-Receipt");
           if (!receiptHeader) return undefined;
           try {
-            const receipt = Session.Precompile.Receipt.deserializeSessionReceipt(receiptHeader);
-            spent = spent > BigInt(receipt.spent) ? spent : BigInt(receipt.spent);
-            return receipt;
+            return Session.Precompile.Receipt.deserializeSessionReceipt(receiptHeader);
           } catch {
             return undefined;
           }
@@ -336,48 +318,58 @@ export async function createMppProxyHandler(opts: {
           tempo({
             account,
             maxDeposit,
-            onChannelUpdate(entry: ChannelEntry) {
+            origin: new URL(url).origin,
+            onChannelUpdate(entry) {
+              channel = entry;
               session.channelId = entry.channelId;
               session.cumulative = entry.cumulativeAmount;
               session.opened = entry.opened;
-              if (entry.channelId && entry.channelId !== persistedChannelId) {
-                persistedChannelId = entry.channelId;
-                if (debug) process.stderr.write(`[x402-proxy] channelId: ${persistedChannelId}\n`);
-                try {
-                  saveSession({ channelId: entry.channelId, createdAt: new Date().toISOString() });
-                } catch {
-                  // Non-critical
-                }
-              }
             },
           }),
         ],
         polyfill: false,
-        onChallenge: async (challenge, helpers) => {
-          const req = challenge.request as { amount?: string; decimals?: number };
-          if (req.amount) {
-            lastChallengeAmount = (Number(req.amount) / 10 ** (req.decimals ?? 6)).toString();
-          }
-          createCredential = helpers.createCredential as CreateCredentialFn;
-          return undefined;
-        },
       });
+      const headers = new Headers(init?.headers);
+      headers.set("Accept", "text/event-stream");
+      headers.set("X-Payer-Address", payerAddress);
+      const prepared = await sessionMppx.prepareRequest(url, { ...init, headers });
+      const response = prepared.payment ? await prepared.payment.pay() : prepared.response;
+      if (!response.ok) throw new Error(`MPP SSE request failed with status ${response.status}`);
 
-      const response = await sessionMppx.fetch(
-        url,
-        injectPayerHeader({
-          ...init,
-          headers: {
-            ...((init?.headers instanceof Headers
-              ? Object.fromEntries(init.headers.entries())
-              : ((init?.headers as Record<string, string> | undefined) ?? {})) as Record<
-              string,
-              string
-            >),
-            Accept: "text/event-stream",
+      async function postManagement(
+        action: "voucher" | "close",
+        amount: bigint,
+        signal?: AbortSignal | null,
+      ) {
+        if (!channel || !prepared.payment) throw new Error("MPP session channel is unavailable");
+        // Each management action needs its own credential bound to the opening challenge.
+        const { payment } = prepared;
+        const credential = await sessionMppx.createCredential(
+          prepared.response,
+          {
+            action,
+            channelId: channel.channelId,
+            descriptor: channel.descriptor,
+            cumulativeAmountRaw: amount.toString(),
           },
-        }),
-      );
+          {
+            orderChallenges: (offers) =>
+              offers.filter(({ challenge }) => challenge.id === payment.challenge.id),
+          },
+        );
+        return sessionMppx.rawFetch(
+          prepared.request.url,
+          payment.setCredential(
+            {
+              method: "POST",
+              headers: { "X-Payer-Address": payerAddress },
+              redirect: "manual",
+              signal,
+            },
+            credential,
+          ),
+        );
+      }
 
       if (!response.body) throw new Error("MPP SSE response has no body");
       rememberSession(session);
@@ -410,8 +402,8 @@ export async function createMppProxyHandler(opts: {
                   spent = spent > BigInt(event.data.spent) ? spent : BigInt(event.data.spent);
                   break;
                 case "payment-need-voucher": {
-                  if (!createCredential) {
-                    throw new Error("MPP voucher requested before challenge helper was captured");
+                  if (!channel || channel.channelId !== event.data.channelId) {
+                    throw new Error("MPP voucher requested for an unexpected channel");
                   }
 
                   const requiredCumulative = BigInt(event.data.requiredCumulative);
@@ -421,16 +413,9 @@ export async function createMppProxyHandler(opts: {
                     deposit,
                     headroom: voucherHeadroomRaw,
                   });
-                  const credential = await createCredential({
-                    action: "voucher",
-                    channelId: event.data.channelId,
-                    cumulativeAmountRaw: target.toString(),
-                  });
-                  const voucherResponse = await sessionMppx.rawFetch(url, {
-                    method: "POST",
-                    headers: { Authorization: credential, "X-Payer-Address": payerAddress },
-                    signal: init?.signal,
-                  });
+                  if (target > channel.deposit)
+                    throw new Error("MPP voucher exceeds channel deposit");
+                  const voucherResponse = await postManagement("voucher", target, init?.signal);
                   if (!voucherResponse.ok) {
                     const body = await voucherResponse.text().catch(() => "");
                     throw new Error(

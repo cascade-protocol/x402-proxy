@@ -1,6 +1,7 @@
 import { address, getAddressEncoder, getProgramDerivedAddress } from "@solana/kit";
 import { buildCommand, type CommandContext } from "@stricli/core";
 import pc from "picocolors";
+import { tempo } from "viem/chains";
 import { calcSpend, formatAmount, formatTxLine, formatUsdcValue, readHistory } from "../history.js";
 import { getHistoryPath } from "../lib/config.js";
 import { dim, info } from "../lib/output.js";
@@ -8,7 +9,6 @@ import { resolveWallet } from "../lib/resolve-wallet.js";
 
 const BASE_RPC = "https://mainnet.base.org";
 const SOLANA_RPC = "https://api.mainnet-beta.solana.com";
-const TEMPO_RPC = "https://rpc.presto.tempo.xyz";
 const MONAD_RPC = "https://rpc.monad.xyz";
 const USDC_BASE = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const USDC_TEMPO = "0x20C000000000000000000000b9537d11c60E8b50";
@@ -48,7 +48,7 @@ export async function fetchEvmBalances(address: string): Promise<{ eth: string; 
 
 export async function fetchTempoBalances(address: string): Promise<{ usdc: string }> {
   const usdcData = `0x70a08231${address.slice(2).padStart(64, "0")}`;
-  const res = (await rpcCall(TEMPO_RPC, "eth_call", [
+  const res = (await rpcCall(tempo.rpcUrls.default.http[0], "eth_call", [
     { to: USDC_TEMPO, data: usdcData },
     "latest",
   ])) as RpcResult;

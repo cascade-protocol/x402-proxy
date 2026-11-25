@@ -67,7 +67,7 @@ importers:
         version: 2.32.0
       '@x402/evm':
         specifier: ^2.32.0
-        version: 2.32.0(typescript@5.9.3)
+        version: 2.32.0(mppx@0.22.0)(typescript@5.9.3)
       '@x402/fetch':
         specifier: ^2.32.0
         version: 2.32.0
@@ -81,14 +81,14 @@ importers:
         specifier: ^6.16.0
         version: 6.16.0
       mppx:
-        specifier: ^0.8.17
-        version: 0.8.17(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.55.16(typescript@5.9.3)(zod@4.6.7))
+        specifier: ^0.22.0
+        version: 0.22.0(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6)
       picocolors:
         specifier: ^1.1.1
         version: 1.1.1
       viem:
-        specifier: ^2.55.16
-        version: 2.55.16(typescript@5.9.3)(zod@4.6.7)
+        specifier: ^2.58.6
+        version: 2.58.6(mppx@0.22.0)(typescript@5.9.3)(zod@4.6.7)
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
@@ -907,10 +907,6 @@ packages:
       '@cfworker/json-schema':
         optional: true
 
-  '@modelcontextprotocol/server@2.0.0-alpha.4':
-    resolution: {integrity: sha512-/KEo3ZJ50HlagHp0lz2vPgfBZFtXHu6zTBXT9XqPc+4O9i4+IbBVWKq/a9yAfv/ifp0u3+mRo8SUk5kMKzhN8A==}
-    engines: {node: '>=20'}
-
   '@mozilla/readability@0.6.0':
     resolution: {integrity: sha512-juG5VWh4qAivzTAeMzvY9xs9HY5rAcr2E4I7tiSSCokRFi7XIZCAu92ZkSTsIj1OPceCifL3cpfteP3pDT9/QQ==}
     engines: {node: '>=14.0.0'}
@@ -1306,10 +1302,6 @@ packages:
     resolution: {integrity: sha512-zD6NdeWEByGE9QF9vCrlJ5YQB4oq9q91kPZS37Jwj5hOkvR1lTBSpsKhKDw4IJtbQ35LsTS1HD9DZYGKIshU1Q==}
     cpu: [x64]
     os: [win32]
-
-  '@scalar/openapi-types@0.8.0':
-    resolution: {integrity: sha512-WmaxVSfvY5K/TwcG2B2TU1WOe1As1uc2s7myswtP6dBlcjU3hM08SApxv/jmyGaCE8t4gO5BBhmHY4pDUfmr2g==}
-    engines: {node: '>=22'}
 
   '@scure/base@1.2.6':
     resolution: {integrity: sha512-g/nm5FgUa//MCj1gV09zTJTaM6KBAHqLN907YVQqf7zC49+DcO4B1so4ZX07Ef10Twr6nuqYEH9GEggFXA4Fmg==}
@@ -1972,10 +1964,6 @@ packages:
   '@stricli/core@1.2.6':
     resolution: {integrity: sha512-j5fa1wyOLrP9WJqqLFEJeQviqb3cK46K+FXTuISEkG/H5C820YfKDoVQ3CDVdM5WLhEx1ARdpiW6+hU4tYHjCQ==}
 
-  '@stripe/stripe-js@9.12.1':
-    resolution: {integrity: sha512-KLXPvjA0BfS4dQnW+ddHjwtIXMnIfKYxqmeNMmQCfKjvYog0cSG+Z7ZvK4RH1+bV90GC07nUztWDRWmJLi5HZQ==}
-    engines: {node: '>=12.16'}
-
   '@telegraf/types@7.1.0':
     resolution: {integrity: sha512-kGevOIbpMcIlCDeorKGpwZmdH7kHbqlk/Yj6dEpJMKEQw5lk0KVQY0OLXaCswy8GqlIVLd5625OB+rAntP9xVw==}
 
@@ -1985,9 +1973,6 @@ packages:
 
   '@tokenizer/token@0.3.0':
     resolution: {integrity: sha512-OvjF+z51L3ov0OyAU0duzsYuvO01PH7x4t6DJx+guahgTnBHkhJdG7soQeTSFLWN3efnHyibZ4Z8l2EuWwJN3A==}
-
-  '@toon-format/toon@2.1.0':
-    resolution: {integrity: sha512-JwWptdF5eOA0HaQxbKAzkpQtR4wSWTEfDlEy/y3/4okmOAX1qwnpLZMmtEWr+ncAhTTY1raCKH0kteHhSXnQqg==}
 
   '@tootallnate/quickjs-emscripten@0.23.0':
     resolution: {integrity: sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA==}
@@ -2778,11 +2763,6 @@ packages:
     resolution: {integrity: sha512-B6Lc2s6yApwnD2/pMzFh/d5AVjdsDXjgkeJ766FmFuJELIGHNycKRj+l3A39yZPM4CchqNCB4RITEAYB1KUM6A==}
     engines: {node: '>=20.19.0'}
 
-  incur@0.4.26:
-    resolution: {integrity: sha512-63lwOc8+o1VeFkIW3sWWMrDSP5Dd1NsvucUWyxLUk+DoNRiNl7cj481nlLdlboXkq+tqYPBSlV/7XbylS2S4BA==}
-    engines: {node: '>=22'}
-    hasBin: true
-
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
@@ -2965,23 +2945,47 @@ packages:
     resolution: {integrity: sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==}
     engines: {node: '>= 18'}
 
-  mppx@0.8.17:
-    resolution: {integrity: sha512-6cfaqzsiMh947CqPJPnJBwUJv4yveRRIA52PrxEjNM/36Le7sOpKG9fh5PU9fmTEkfjf0O5vFPGo4tx6tlrRUw==}
+  mppx@0.22.0:
+    resolution: {integrity: sha512-p48fsXOyouGb5M+ndkWZyL2Os/V140TNrmalgAI9a/qgo1L/px61A2MqbxdCjbua9SyoL4JU7UVfvIHZrs8q2g==}
     hasBin: true
     peerDependencies:
       '@modelcontextprotocol/sdk': '>=1.25.0'
-      elysia: '>=1'
+      '@stripe/agent-identity': '>=0.3.0'
+      '@x402/core': '>=2.22.0'
+      '@x402/evm': '>=2.22.0'
+      '@x402/express': '>=2.22.0'
+      '@x402/hono': '>=2.22.0'
+      '@x402/mcp': '>=2.22.0'
+      '@x402/next': '>=2.22.0'
+      elysia: '>=1.2.0'
       express: '>=5'
       hono: '>=4.12.25'
-      viem: '>=2.54.0'
+      next: '>=16.2.6'
+      viem: '>=2.57.19'
     peerDependenciesMeta:
       '@modelcontextprotocol/sdk':
+        optional: true
+      '@stripe/agent-identity':
+        optional: true
+      '@x402/core':
+        optional: true
+      '@x402/evm':
+        optional: true
+      '@x402/express':
+        optional: true
+      '@x402/hono':
+        optional: true
+      '@x402/mcp':
+        optional: true
+      '@x402/next':
         optional: true
       elysia:
         optional: true
       express:
         optional: true
       hono:
+        optional: true
+      next:
         optional: true
 
   mri@1.2.0:
@@ -3094,8 +3098,16 @@ packages:
     resolution: {integrity: sha512-4/8JfsetakdeEa4vAYV45FW20aY+B/+K8NEXp5Eiar3wR8726whgHrbSg5Ar/ZY1FLJ/AGtUqV7W2IVF+Gvp9A==}
     engines: {node: '>=20'}
 
-  ox@0.14.33:
-    resolution: {integrity: sha512-rooA/4o7bBof4Ge2VH/eovfNPb/AEEYyrNj03wggc55g5HZD8Pjs/OeWhttgjic3dDcqn0r29bDuvQEdTiUemQ==}
+  ox@0.14.65:
+    resolution: {integrity: sha512-K7oj+jvEP4Gf78ZOYuWAWzKEX/g5z7p6ukj84gdbFnezmFSt6SpprEp9tH5tymXsywSqRdeqk+8JL4+9o0Schw==}
+    peerDependencies:
+      typescript: '>=5.4.0'
+    peerDependenciesMeta:
+      typescript:
+        optional: true
+
+  ox@0.14.67:
+    resolution: {integrity: sha512-6v6UlwgsmiyTujZp0aVDuN8uIBAtl/QZadBADFRZ2zp1+CM9TqDzd+rPKJ5PYvWPlCvz8JvoO9dTr42+1PhBhA==}
     peerDependencies:
       typescript: '>=5.4.0'
     peerDependenciesMeta:
@@ -3474,8 +3486,8 @@ packages:
     resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
     engines: {node: '>=18'}
 
-  structured-headers@2.0.3:
-    resolution: {integrity: sha512-4g5yxhlDMClRwCcfKfLeS7Z8yAVdOWGDADwm80Poh1iReU2KVKLGBlqwpHWJ2qovq0+ZIf1atAEO1eua2o9Rgg==}
+  structured-headers@2.1.0:
+    resolution: {integrity: sha512-ClzykN+XQVaSW5UfpOdEWfDplZ1Th7mISdaFvaC2+GjLTeBhGMJw83D/Rw9jPkHOml4oYd3EXaZhbz3gnE5nBQ==}
     engines: {node: '>=18', npm: '>=6'}
 
   supports-color@7.2.0:
@@ -3524,9 +3536,6 @@ packages:
   token-types@6.1.2:
     resolution: {integrity: sha512-dRXchy+C0IgK8WPC6xvCHFRIWYUbqqdEIKPaKo/AcTUNzwLTK6AH7RjdLWsEZcAN/TBdtfUw3PYEgPr5VPr6ww==}
     engines: {node: '>=14.16'}
-
-  tokenx@1.3.0:
-    resolution: {integrity: sha512-NLdXTEZkKiO0gZuLtMoZKjCXTREXeZZt8nnnNeyoXtNZAfG/GKGSbQtLU5STspc0rMSwcA+UJfWZkbNU01iKmQ==}
 
   tr46@0.0.3:
     resolution: {integrity: sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==}
@@ -3655,11 +3664,14 @@ packages:
     resolution: {integrity: sha512-BNGbWLfd0eUPabhkXUVm0j8uuvREyTh5ovRa/dyow/BqAbZJyC+5fU+IzQOzmAKzYqYRAISoRhdQr3eIZ/PXqg==}
     engines: {node: '>= 0.8'}
 
-  viem@2.55.16:
-    resolution: {integrity: sha512-bKs/0PNIkiaG45ZM0ERddHSVtku7hvyebK2i3bMLuyJQevh15tpDh3MiE3PhLjx5kxGrvizaXQw67gWc9Jl7fQ==}
+  viem@2.58.6:
+    resolution: {integrity: sha512-dBxl7nsHrENzD3HR/wOeeH2NcfXSwoEibTSZKJR7kcQOyqIDa50O27H2JU2ZMAQqS1QrEojaYCy6dLWIsdb9cA==}
     peerDependencies:
+      mppx: '>=0.17.0'
       typescript: '>=5.0.4'
     peerDependenciesMeta:
+      mppx:
+        optional: true
       typescript:
         optional: true
 
@@ -4343,7 +4355,8 @@ snapshots:
 
   '@borewit/text-codec@0.2.2': {}
 
-  '@cfworker/json-schema@4.1.1': {}
+  '@cfworker/json-schema@4.1.1':
+    optional: true
 
   '@clack/core@1.1.0':
     dependencies:
@@ -4852,10 +4865,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@modelcontextprotocol/server@2.0.0-alpha.4':
-    dependencies:
-      zod: 4.4.3
-
   '@mozilla/readability@0.6.0': {}
 
   '@napi-rs/canvas-android-arm64@0.1.97':
@@ -5094,15 +5103,13 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.62.4':
     optional: true
 
-  '@scalar/openapi-types@0.8.0': {}
-
   '@scure/base@1.2.6': {}
 
   '@scure/base@2.0.0': {}
 
   '@scure/bip32@1.7.0':
     dependencies:
-      '@noble/curves': 1.9.1
+      '@noble/curves': 1.9.7
       '@noble/hashes': 1.8.0
       '@scure/base': 1.2.6
 
@@ -5971,8 +5978,6 @@ snapshots:
 
   '@stricli/core@1.2.6': {}
 
-  '@stripe/stripe-js@9.12.1': {}
-
   '@telegraf/types@7.1.0':
     optional: true
 
@@ -5984,8 +5989,6 @@ snapshots:
       - supports-color
 
   '@tokenizer/token@0.3.0': {}
-
-  '@toon-format/toon@2.1.0': {}
 
   '@tootallnate/quickjs-emscripten@0.23.0': {}
 
@@ -6093,13 +6096,14 @@ snapshots:
     dependencies:
       zod: 4.6.7
 
-  '@x402/evm@2.32.0(typescript@5.9.3)':
+  '@x402/evm@2.32.0(mppx@0.22.0)(typescript@5.9.3)':
     dependencies:
       '@x402/core': 2.32.0
-      viem: 2.55.16(typescript@5.9.3)(zod@4.6.7)
+      viem: 2.58.6(mppx@0.22.0)(typescript@5.9.3)(zod@4.6.7)
       zod: 4.6.7
     transitivePeerDependencies:
       - bufferutil
+      - mppx
       - typescript
       - utf-8-validate
 
@@ -6130,11 +6134,6 @@ snapshots:
       - '@solana/zk-sdk'
       - fastestsmallesttextencoderdecoder
       - typescript
-
-  abitype@1.2.3(typescript@5.9.3)(zod@4.4.3):
-    optionalDependencies:
-      typescript: 5.9.3
-      zod: 4.4.3
 
   abitype@1.2.3(typescript@5.9.3)(zod@4.6.7):
     optionalDependencies:
@@ -6863,16 +6862,6 @@ snapshots:
 
   import-without-cache@0.2.5: {}
 
-  incur@0.4.26:
-    dependencies:
-      '@cfworker/json-schema': 4.1.1
-      '@modelcontextprotocol/server': 2.0.0-alpha.4
-      '@scalar/openapi-types': 0.8.0
-      '@toon-format/toon': 2.1.0
-      tokenx: 1.3.0
-      yaml: 2.8.3
-      zod: 4.4.3
-
   inherits@2.0.4: {}
 
   ip-address@10.1.0: {}
@@ -7036,17 +7025,17 @@ snapshots:
     dependencies:
       minipass: 7.1.3
 
-  mppx@0.8.17(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.55.16(typescript@5.9.3)(zod@4.6.7)):
+  mppx@0.22.0(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6):
     dependencies:
-      '@stripe/stripe-js': 9.12.1
-      eventsource-parser: 3.1.0
-      incur: 0.4.26
-      ox: 0.14.33(typescript@5.9.3)(zod@4.4.3)
-      structured-headers: 2.0.3
-      viem: 2.55.16(typescript@5.9.3)(zod@4.6.7)
-      zod: 4.4.3
+      ox: 0.14.65(typescript@5.9.3)(zod@4.6.7)
+      structured-headers: 2.1.0
+      viem: 2.58.6(mppx@0.22.0)(typescript@5.9.3)(zod@4.6.7)
+      zod: 4.6.7
     optionalDependencies:
       '@modelcontextprotocol/sdk': 1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7)
+      '@x402/core': 2.32.0
+      '@x402/evm': 2.32.0(mppx@0.22.0)(typescript@5.9.3)
+      '@x402/mcp': 2.32.0(@cfworker/json-schema@4.1.1)
       express: 5.2.1
       hono: 4.13.2
     transitivePeerDependencies:
@@ -7197,7 +7186,7 @@ snapshots:
 
   osc-progress@0.3.0: {}
 
-  ox@0.14.33(typescript@5.9.3)(zod@4.4.3):
+  ox@0.14.65(typescript@5.9.3)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -7205,14 +7194,14 @@ snapshots:
       '@noble/hashes': 1.8.0
       '@scure/bip32': 1.7.0
       '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@5.9.3)(zod@4.4.3)
+      abitype: 1.2.3(typescript@5.9.3)(zod@4.6.7)
       eventemitter3: 5.0.1
     optionalDependencies:
       typescript: 5.9.3
     transitivePeerDependencies:
       - zod
 
-  ox@0.14.33(typescript@5.9.3)(zod@4.6.7):
+  ox@0.14.67(typescript@5.9.3)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -7705,7 +7694,7 @@ snapshots:
     dependencies:
       '@tokenizer/token': 0.3.0
 
-  structured-headers@2.0.3: {}
+  structured-headers@2.1.0: {}
 
   supports-color@7.2.0:
     dependencies:
@@ -7765,8 +7754,6 @@ snapshots:
       '@borewit/text-codec': 0.2.2
       '@tokenizer/token': 0.3.0
       ieee754: 1.2.1
-
-  tokenx@1.3.0: {}
 
   tr46@0.0.3: {}
 
@@ -7892,7 +7879,7 @@ snapshots:
 
   vary@1.1.2: {}
 
-  viem@2.55.16(typescript@5.9.3)(zod@4.6.7):
+  viem@2.58.6(mppx@0.22.0)(typescript@5.9.3)(zod@4.6.7):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
@@ -7900,9 +7887,10 @@ snapshots:
       '@scure/bip39': 1.6.0
       abitype: 1.2.3(typescript@5.9.3)(zod@4.6.7)
       isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.33(typescript@5.9.3)(zod@4.6.7)
+      ox: 0.14.67(typescript@5.9.3)(zod@4.6.7)
       ws: 8.21.0
     optionalDependencies:
+      mppx: 0.22.0(@modelcontextprotocol/sdk@1.27.1(@cfworker/json-schema@4.1.1)(zod@4.6.7))(@x402/core@2.32.0)(@x402/evm@2.32.0)(@x402/mcp@2.32.0(@cfworker/json-schema@4.1.1))(express@5.2.1)(hono@4.13.2)(typescript@5.9.3)(viem@2.58.6)
       typescript: 5.9.3
     transitivePeerDependencies:
       - bufferutil
