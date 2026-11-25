@@ -15,7 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- For library users, the exported `x402Client` now accepts only default assets and caps each payment at $1 by default. Call `.setSpendControls(false)` to opt out. The CLI and OpenClaw plugin opt out of these library defaults.
+- Tempo session payments and zero-amount proofs require the challenge realm to match the upstream hostname, ignoring case. A local server must issue its challenge for the hostname the client uses.
+- OpenClaw records an unsuccessful inference history entry when an upstream MPP stream fails and ends the stream without a final `[DONE]` event.
+- Solana payment offers that advertise transaction versions must include version 0.
+- Streaming MPP requests send the opening payment once. A replacement HTTP 402 ends that request.
+
+- For library users, the exported `x402Client` now accepts only default assets and caps each payment at $1 by default. Call `.setSpendControls(false)` to opt out. The CLI and OpenClaw plugin disable the library dollar cap and allow Solana mainnet USDC alongside upstream default assets.
 - The OpenClaw plugin now depends on `@solana/kit ^8.6.0`, `mppx ^0.22.0`, and `viem ^2.58.6`.
 
 ## [0.12.3] - 2026-08-14

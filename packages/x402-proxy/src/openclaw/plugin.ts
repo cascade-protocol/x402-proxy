@@ -15,7 +15,7 @@ import {
 } from "../handler.js";
 import { createWalletFile, getHistoryPath, getWalletPath, saveWalletFile } from "../lib/config.js";
 import { generateMnemonic, isValidMnemonic } from "../lib/derive.js";
-import { OptimizedSvmScheme } from "../lib/optimized-svm-scheme.js";
+import { OptimizedSvmScheme, proxySpendControls } from "../lib/optimized-svm-scheme.js";
 import { resolveWallet } from "../lib/wallet-resolution.js";
 import { loadSvmWallet } from "../wallet.js";
 import { createSendCommand, createWalletCommand } from "./commands.js";
@@ -260,8 +260,8 @@ export function register(api: OpenClawPluginApi): void {
         }
 
         if (signerRef) {
-          // The plugin scheme accepts only Solana USDC and has no implicit dollar cap.
-          const client = new x402Client().setSpendControls(false);
+          // Keep Solana USDC eligible without imposing a library dollar cap.
+          const client = new x402Client().setSpendControls(proxySpendControls);
           client.register(SOL_MAINNET, new OptimizedSvmScheme(signerRef, { rpcUrl }));
           proxyRef = createX402ProxyHandler({ client });
         } else {

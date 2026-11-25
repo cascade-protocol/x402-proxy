@@ -6,7 +6,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { calcSpend, displayNetwork, formatUsdcValue, readHistory } from "../history.js";
 import { getHistoryPath } from "./config.js";
-import { OptimizedSvmScheme } from "./optimized-svm-scheme.js";
+import { OptimizedSvmScheme, proxySpendControls } from "./optimized-svm-scheme.js";
 import type { WalletResolution } from "./wallet-resolution.js";
 
 export { resolveWallet, type WalletResolution, type WalletSource } from "./wallet-resolution.js";
@@ -92,7 +92,7 @@ export async function buildX402Client(
     : undefined;
 
   // The proxy applies its configured daily and per-transaction limits below.
-  const client = new x402Client(selector).setSpendControls(false);
+  const client = new x402Client(selector).setSpendControls(proxySpendControls);
 
   if (wallet.evmKey) {
     const hex = wallet.evmKey as `0x${string}`;

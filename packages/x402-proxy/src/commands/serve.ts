@@ -14,7 +14,7 @@ import {
 } from "../openclaw/defaults.js";
 import { createInferenceProxyRouteHandler } from "../openclaw/route.js";
 import { addressForNetwork } from "../openclaw/tools.js";
-import { fetchAllBalances } from "./wallet.js";
+import { detectPreferredNetwork } from "./wallet.js";
 
 type ServeFlags = {
   port: string;
@@ -71,19 +71,6 @@ async function resolveWalletForServe(flags: {
     process.exit(1);
   }
   return wallet;
-}
-
-async function detectPreferredNetwork(wallet: WalletResolution): Promise<string | undefined> {
-  if (!wallet.evmAddress || !wallet.solanaAddress) {
-    return undefined;
-  }
-
-  const balances = await fetchAllBalances(wallet.evmAddress, wallet.solanaAddress);
-  const evmUsdc = balances.evm ? Number(balances.evm.usdc) : 0;
-  const solUsdc = balances.sol ? Number(balances.sol.usdc) : 0;
-  if (evmUsdc > solUsdc) return "base";
-  if (solUsdc > evmUsdc) return "solana";
-  return undefined;
 }
 
 function walletAddressForNetwork(wallet: WalletResolution, network: string): string | null {

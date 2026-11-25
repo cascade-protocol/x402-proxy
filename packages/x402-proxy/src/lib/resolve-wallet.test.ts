@@ -5,7 +5,9 @@ import {
   getTransactionDecoder,
 } from "@solana/kit";
 import type { PaymentRequirements } from "@x402/fetch";
+import { generatePrivateKey } from "viem/accounts";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { detectPreferredNetwork } from "../commands/wallet.js";
 import { deriveSolanaKeypair } from "./derive.js";
 import { OptimizedSvmScheme } from "./optimized-svm-scheme.js";
 import {
@@ -19,6 +21,7 @@ import {
 
 // --- Test fixtures ---
 
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 const TEST_MNEMONIC =
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon art";
 
@@ -60,7 +63,7 @@ describe("configured Solana spend limits", () => {
         accepts: [
           {
             ...solanaReq,
-            asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            asset: USDC_MINT,
             amount: "2000000",
             payTo: keypair.address,
           },
@@ -68,6 +71,43 @@ describe("configured Solana spend limits", () => {
       }),
     ).rejects.toThrow(expected);
   });
+});
+
+it("selects a network using only the two USDC balances and a shared deadline", async ({
+  onTestFinished,
+}) => {
+  const methods: string[] = [];
+  const signals = new Set<AbortSignal | null | undefined>();
+  const timeout = vi.spyOn(AbortSignal, "timeout");
+  onTestFinished(() => {
+    timeout.mockRestore();
+    vi.unstubAllGlobals();
+  });
+  vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+    const { method } = JSON.parse(String(init.body));
+    methods.push(method);
+    signals.add(init.signal);
+    return Response.json({
+      result: method === "eth_call" ? "0xf4240" : { value: { uiAmountString: "2" } },
+    });
+  });
+  expect(
+    await detectPreferredNetwork({ evmAddress: baseReq.payTo, solanaAddress: USDC_MINT }),
+  ).toBe("solana");
+  expect(methods.sort()).toEqual(["eth_call", "getTokenAccountBalance"]);
+  expect(timeout).toHaveBeenCalledWith(3000);
+  expect([...signals]).toEqual([timeout.mock.results[0].value]);
+});
+
+it("rejects an unlisted Base asset before signing", async () => {
+  const client = await buildX402Client({ source: "flag", evmKey: generatePrivateKey() });
+  await expect(
+    client.createPaymentPayload({
+      x402Version: 2,
+      resource: { url: "https://example.test" },
+      accepts: [{ ...baseReq, asset: "0x0000000000000000000000000000000000000001" }],
+    }),
+  ).rejects.toThrow("only default assets or entries");
 });
 
 describe("OptimizedSvmScheme", () => {
@@ -101,7 +141,7 @@ describe("OptimizedSvmScheme", () => {
     const scheme = new OptimizedSvmScheme(signer);
     const { payload } = await scheme.createPaymentPayload(2, {
       ...solanaReq,
-      asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      asset: USDC_MINT,
       payTo: payee.address,
       extra: { feePayer: feePayer.address, ...extra },
     });
@@ -143,7 +183,17 @@ describe("OptimizedSvmScheme", () => {
     expect(message.lifetimeToken).toBe(hintedBlockhash);
   });
 
-  it.each(["", "\u00e9".repeat(128)])("encodes the supplied memo exactly", async (memo) => {
+  it("uses a fresh nonce for empty seller memos sharing a blockhash", async () => {
+    const extra = { memo: "", recentBlockhash: hintedBlockhash, lastValidBlockHeight: 99 };
+    const first = (await buildTransaction(extra)).instructions[3].data.toString();
+    const second = (await buildTransaction(extra)).instructions[3].data.toString();
+    expect(first).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).toMatch(/^[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+  });
+
+  it("encodes the supplied memo exactly", async () => {
+    const memo = "\u00e9".repeat(128);
     const { instructions } = await buildTransaction({ memo });
     expect(instructions[3].data).toEqual(Buffer.from(memo));
   });
@@ -163,15 +213,12 @@ describe("OptimizedSvmScheme", () => {
     const signer = await generateKeyPairSigner();
     const scheme = new OptimizedSvmScheme(signer);
     await expect(
-      scheme.createPaymentPayload(
-        2,
-        makeReq({
-          ...solanaReq,
-          asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-          payTo: signer.address,
-          extra: { transactionVersions: versions },
-        }),
-      ),
+      scheme.createPaymentPayload(2, {
+        ...solanaReq,
+        asset: USDC_MINT,
+        payTo: signer.address,
+        extra: { transactionVersions: versions },
+      }),
     ).rejects.toThrow("unsupported_transaction_version");
   });
 });

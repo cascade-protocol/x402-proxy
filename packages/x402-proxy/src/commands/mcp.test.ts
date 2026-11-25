@@ -1,10 +1,17 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { appendHistory } from "../history.js";
+import { getHistoryPath } from "../lib/config.js";
 import {
   callX402ToolWithAutoPayment,
   cloneResource,
   cloneTool,
+  createMppToolPayment,
   extractPaymentRequiredFromResult,
   normalizeCallToolResult,
+  trustedMcpRealms,
 } from "./mcp.js";
 
 describe("cloneTool", () => {
@@ -162,5 +169,61 @@ describe("callX402ToolWithAutoPayment", () => {
       structuredContent: { query: "x402", results: [], count: 0 },
       _meta: { "x402/payment-response": { transaction: "0xsettled" } },
     });
+  });
+});
+
+describe("MPP tool payment approval", () => {
+  const charge = { intent: "charge", request: { amount: "600000" } };
+
+  it("allows one payment per call and enforces the per-transaction limit", () => {
+    const pending = new Map<symbol, number>();
+    expect(() => createMppToolPayment({ spendLimitPerTx: 0.5 }, pending).approve(charge)).toThrow(
+      "per-transaction",
+    );
+    const call = createMppToolPayment({ spendLimitPerTx: 0.6 }, pending);
+    expect(call.approve(charge)).toBe(true);
+    expect(() => call.approve(charge)).toThrow("one payment");
+    expect(() =>
+      createMppToolPayment({ spendLimitPerTx: 0.6 }, pending).approve({
+        intent: "session",
+        request: { amount: "2", suggestedDeposit: "1000000" },
+      }),
+    ).toThrow("per-transaction");
+  });
+
+  it("counts history and other in-flight approvals toward the daily limit", ({
+    onTestFinished,
+  }) => {
+    const dir = mkdtempSync(join(tmpdir(), "x402-mcp-limit-"));
+    vi.stubEnv("XDG_CONFIG_HOME", dir);
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    });
+    appendHistory(getHistoryPath(), {
+      t: Date.now(),
+      ok: true,
+      kind: "mpp_payment",
+      net: "tempo",
+      from: "test",
+      amount: 0.4,
+      token: "USDC",
+    });
+    const pending = new Map<symbol, number>();
+    const approve = () => createMppToolPayment({ spendLimitDaily: 1 }, pending);
+    expect(() => approve().approve({ ...charge, request: { amount: "600001" } })).toThrow(
+      "Daily spend limit",
+    );
+    const first = approve();
+    expect(first.approve(charge)).toBe(true);
+    expect(() => approve().approve(charge)).toThrow("Daily spend limit");
+    first.release();
+    expect(approve().approve(charge)).toBe(true);
+  });
+
+  it("accepts case variants of the pinned hostname only", () => {
+    const realms = trustedMcpRealms("example.test");
+    expect(realms.includes("Example.TEST")).toBe(true);
+    expect(realms.includes("other.test")).toBe(false);
   });
 });
