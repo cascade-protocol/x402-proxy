@@ -260,7 +260,8 @@ export function register(api: OpenClawPluginApi): void {
         }
 
         if (signerRef) {
-          const client = new x402Client();
+          // The plugin scheme accepts only Solana USDC and has no implicit dollar cap.
+          const client = new x402Client().setSpendControls(false);
           client.register(SOL_MAINNET, new OptimizedSvmScheme(signerRef, { rpcUrl }));
           proxyRef = createX402ProxyHandler({ client });
         } else {

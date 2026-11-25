@@ -91,7 +91,8 @@ export async function buildX402Client(
     ? createNetworkPreference(opts.preferredNetwork)
     : undefined;
 
-  const client = new x402Client(selector);
+  // The proxy applies its configured daily and per-transaction limits below.
+  const client = new x402Client(selector).setSpendControls(false);
 
   if (wallet.evmKey) {
     const hex = wallet.evmKey as `0x${string}`;

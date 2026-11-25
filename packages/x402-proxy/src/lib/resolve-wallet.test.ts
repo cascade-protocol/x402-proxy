@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { deriveSolanaKeypair } from "./derive.js";
 import { OptimizedSvmScheme } from "./optimized-svm-scheme.js";
 import {
+  buildX402Client,
   createAddressValidationPolicy,
   createNetworkFilter,
   createNetworkPreference,
@@ -35,6 +36,35 @@ const solanaReq = makeReq({ network: "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp" }
 const tempoReq = makeReq({ network: "eip155:4217" });
 const bothReqs = [baseReq, solanaReq];
 const allReqs = [baseReq, solanaReq, tempoReq];
+
+describe("configured Solana spend limits", () => {
+  it.each([
+    { perTx: undefined, expected: "selected Solana" },
+    { perTx: 3, expected: "selected Solana" },
+    { perTx: 1, expected: "exceeds per-transaction limit" },
+  ])("applies the proxy limit of $perTx to a 2 USDC offer", async ({ perTx, expected }) => {
+    const keypair = deriveSolanaKeypair(TEST_MNEMONIC);
+    const client = await buildX402Client(
+      { source: "flag", solanaKey: new Uint8Array([...keypair.secretKey, ...keypair.publicKey]) },
+      { network: "solana", spendLimitPerTx: perTx },
+    );
+    client.onBeforePaymentCreation(async () => ({ abort: true, reason: "selected Solana" }));
+    await expect(
+      client.createPaymentPayload({
+        x402Version: 2,
+        resource: { url: "https://example.test" },
+        accepts: [
+          {
+            ...solanaReq,
+            asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            amount: "2000000",
+            payTo: keypair.address,
+          },
+        ],
+      }),
+    ).rejects.toThrow(expected);
+  });
+});
 
 describe("OptimizedSvmScheme", () => {
   it.each([
