@@ -36,7 +36,8 @@ function stubSessionServer(
   const url = "https://example.test/chat";
   const chainId = 4217;
   const escrow = Session.Precompile.Constants.tip20ChannelEscrow;
-  const expires = new Date(Date.now() + 300_000).toISOString();
+  const lifetimeMs = scenario === "20-second challenges" ? 20_000 : 300_000;
+  const expires = new Date(Date.now() + lifetimeMs).toISOString();
   const challenge = Challenge.from({
     id: "session-test",
     expires,
@@ -55,7 +56,7 @@ function stubSessionServer(
     ...challenge,
     id: "renewed",
     header: "Payment-Authorization" as const,
-    expires: new Date(Date.now() + 300_000).toISOString(),
+    expires: new Date(Date.now() + lifetimeMs).toISOString(),
   });
   let probes = 0;
   const challengeIds: string[] = [];
@@ -341,13 +342,34 @@ it("probes within 30 seconds of expiry and selects the matching recipient and cu
   expect(server.challengeIds).toEqual(["session-test", "session-test", "renewed"]);
 });
 
+it("posts vouchers and closes when every challenge lasts 20 seconds", async () => {
+  let retried = false;
+  const server = stubSessionServer("20-second challenges", {
+    management(action, offer) {
+      if (action !== "voucher" || retried) return;
+      retried = true;
+      return challengeResponse({ ...offer, id: "retry" });
+    },
+  });
+  const handler = await consumeSession(server);
+  await handler.close();
+  expect(server.probes).toBe(2);
+  expect(server.challengeIds).toEqual(["session-test", "renewed", "retry", "renewed"]);
+  expect(server.actions).toEqual([
+    ["open", "2"],
+    ["voucher", "5004"],
+    ["voucher", "5004"],
+    ["close", "4"],
+  ]);
+});
+
 it.each([
   ["probe", "foreign realm"],
   ["402", "foreign realm"],
   ["probe", "foreign channel"],
   ["402", "foreign channel"],
   ["402", "foreign snapshot"],
-  ["402", "near expiry"],
+  ["402", "expired offer"],
   ["probe", "wrong recipient"],
   ["probe", "wrong currency"],
   ["probe", "non-402"],
@@ -364,8 +386,8 @@ it.each([
         return new Response(null, { status: 503 });
       case "foreign realm":
         return challengeResponse({ ...offer, realm: "elsewhere.test" });
-      case "near expiry":
-        return challengeResponse({ ...offer, expires: new Date(Date.now() + 5_000).toISOString() });
+      case "expired offer":
+        return challengeResponse({ ...offer, expires: new Date(Date.now()).toISOString() });
       case "foreign snapshot":
       case "foreign channel":
         return challengeResponse({

@@ -138,7 +138,7 @@ export async function callMppTool(
       onPaymentRequired: payment.approve,
     });
     const amount = payment.amount;
-    if (amount !== undefined || result.receipt) {
+    if ((amount !== undefined && amount > 0) || result.receipt) {
       const record: TxRecord = {
         t: Date.now(),
         ok: true,

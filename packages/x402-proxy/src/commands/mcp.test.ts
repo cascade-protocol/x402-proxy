@@ -270,7 +270,10 @@ describe("MPP tool payment approval", () => {
       .mockImplementation(async ({ challenge }) =>
         Credential.serialize({ challenge, payload: {} }),
       );
-    const client = McpClient.wrap({ callTool }, { methods: [method] });
+    const client = McpClient.wrap(
+      { callTool },
+      { methods: [method], trustedTempoProofRealms: trustedMcpRealms("example.test") },
+    );
     const pending = new Map<symbol, number>();
     const call = () =>
       callMppTool(
@@ -297,6 +300,21 @@ describe("MPP tool payment approval", () => {
     await expect(call()).rejects.toThrow("Daily spend limit");
     expect(sign).toHaveBeenCalledTimes(2);
     expect(callTool).toHaveBeenCalledTimes(5);
+
+    const proof = { ...challenge, request: { ...challenge.request, amount: "0" } };
+    callTool
+      .mockResolvedValueOnce({
+        content: [],
+        _meta: { [Mcp.paymentRequiredMetaKey]: { challenges: [proof] } },
+      })
+      .mockResolvedValueOnce(success);
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    onTestFinished(() => stderr.mockRestore());
+    await expect(call()).resolves.toMatchObject(success);
+    expect(sign).toHaveBeenCalledTimes(3);
+    expect(pending.size).toBe(0);
+    expect.soft(readHistory(getHistoryPath())).toEqual(history);
+    expect(stderr).not.toHaveBeenCalledWith(expect.stringContaining("MPP payment"));
   });
 
   it("accepts case variants of the pinned hostname only", () => {

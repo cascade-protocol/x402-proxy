@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `wallet` and `status` now show the Tempo USDC balance.
 - Streaming requests with `--protocol mpp` exit with status 1 on an upstream HTTP error and include the first 200 bytes of the provider's response in the error message.
 - Solana payments now honor the seller's recent blockhash hint and UTF-8 memo. Memos can be up to 256 bytes. Payments without a seller memo continue to use a random nonce.
-- The MCP proxy enforces `spendLimitPerTx` and `spendLimitDaily` for MPP tool calls. A successful paid call counts toward daily spend even when the server omits its receipt. Zero-cost proofs remain available at the daily limit.
+- The MCP proxy enforces `spendLimitPerTx` and `spendLimitDaily` for MPP tool calls. When an approved paid call returns a result, its amount counts toward daily spend even if the result reports an error or omits the receipt. Zero-cost proofs remain available at the daily limit.
 - Streaming MPP sessions refresh challenges 30 seconds before expiry. A voucher or close POST rejected with HTTP 402 retries once when the server offers a fresh challenge for the same host and channel.
 
 ### Changed

@@ -178,8 +178,8 @@ const PROVIDER_ERROR_PREVIEW_BYTES = 200;
 const SESSION_CLOSE_TIMEOUT_MS = 5_000;
 const SESSION_EXPIRY_MARGIN_MS = 30_000;
 
-function validForManagement(expires?: string): boolean {
-  return expires === undefined || Date.parse(expires) > Date.now() + SESSION_EXPIRY_MARGIN_MS;
+function validForManagement(expires: string | undefined, marginMs = 0): boolean {
+  return expires === undefined || Date.parse(expires) > Date.now() + marginMs;
 }
 
 function sameHex(value: unknown, expected: string): boolean {
@@ -437,7 +437,7 @@ export async function createMppProxyHandler(opts: {
 
         let offer = challengeResponse;
         let expectedId: string | undefined = currentChallenge.id;
-        if (!validForManagement(currentChallenge.expires)) {
+        if (!validForManagement(currentChallenge.expires, SESSION_EXPIRY_MARGIN_MS)) {
           const probe = await sessionMppx.rawFetch(managementUrl, {
             method: "POST",
             redirect: "manual",
